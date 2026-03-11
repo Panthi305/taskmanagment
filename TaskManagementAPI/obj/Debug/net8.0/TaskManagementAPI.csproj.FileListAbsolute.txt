@@ -136,3 +136,4 @@ D:\SEM_5_NET\TaskManagementAPI\obj\Debug\net8.0\refint\TaskManagementAPI.dll
 D:\SEM_5_NET\TaskManagementAPI\obj\Debug\net8.0\TaskManagementAPI.pdb
 D:\SEM_5_NET\TaskManagementAPI\obj\Debug\net8.0\TaskManagementAPI.genruntimeconfig.cache
 D:\SEM_5_NET\TaskManagementAPI\obj\Debug\net8.0\ref\TaskManagementAPI.dll
+D:\SEM_5_NET\TaskManagementAPI\obj\Debug\net8.0\TaskManagementAPI.sourcelink.json
