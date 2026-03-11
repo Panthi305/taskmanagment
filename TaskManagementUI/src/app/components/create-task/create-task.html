@@ -1,0 +1,51 @@
+<div class="page-container">
+    <div class="page-header">
+        <h2>Create New Task</h2>
+        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
+    </div>
+
+    <div class="form-container">
+        <form (ngSubmit)="onSubmit()">
+            <div class="form-group">
+                <label for="title">Task Title *</label>
+                <input type="text" id="title" [(ngModel)]="title" name="title" required
+                    placeholder="Enter task title" />
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description *</label>
+                <textarea id="description" [(ngModel)]="description" name="description" required rows="5"
+                    placeholder="Enter task description"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="assignedTo">Assign To *</label>
+                <select id="assignedTo" [(ngModel)]="assignedTo" name="assignedTo" required>
+                    <option value="0">Select Employee</option>
+                    <option *ngFor="let user of users" [value]="user.id">
+                        {{ user.name }} ({{ user.email }})
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="priority">Priority</label>
+                <select id="priority" [(ngModel)]="priority" name="priority">
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                </select>
+            </div>
+
+            <div *ngIf="successMessage" class="success-message">
+                {{ successMessage }}
+            </div>
+
+            <div *ngIf="errorMessage" class="error-message">
+                {{ errorMessage }}
+            </div>
+
+            <button type="submit" class="btn-primary">Create Task</button>
+        </form>
+    </div>
+</div>

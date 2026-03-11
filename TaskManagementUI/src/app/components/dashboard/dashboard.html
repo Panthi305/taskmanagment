@@ -1,0 +1,71 @@
+<div class="dashboard-container">
+    <nav class="navbar">
+        <div class="nav-brand">Task Management System</div>
+        <div class="nav-user">
+            <span>Welcome, {{ currentUser?.name }} ({{ currentUser?.role }})</span>
+            <button (click)="logout()" class="btn-logout">Logout</button>
+        </div>
+    </nav>
+
+    <div class="dashboard-content">
+        <h2>Dashboard</h2>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>{{ stats.total }}</h3>
+                <p>Total Tasks</p>
+            </div>
+            <div class="stat-card pending">
+                <h3>{{ stats.pending }}</h3>
+                <p>Pending</p>
+            </div>
+            <div class="stat-card in-progress">
+                <h3>{{ stats.inProgress }}</h3>
+                <p>In Progress</p>
+            </div>
+            <div class="stat-card completed">
+                <h3>{{ stats.completed }}</h3>
+                <p>Completed</p>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button *ngIf="canCreateTask()" routerLink="/create-task" class="btn-primary">
+                Create New Task
+            </button>
+            <button routerLink="/my-tasks" class="btn-secondary">
+                My Tasks
+            </button>
+            <button routerLink="/tasks" class="btn-secondary">
+                All Tasks
+            </button>
+        </div>
+
+        <div class="recent-tasks">
+            <h3>Recent Tasks</h3>
+            <table *ngIf="tasks.length > 0">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Assigned To</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let task of tasks.slice(0, 5)">
+                        <td>{{ task.title }}</td>
+                        <td>{{ task.assignedToName }}</td>
+                        <td><span class="badge priority-{{ task.priority.toLowerCase() }}">{{ task.priority }}</span>
+                        </td>
+                        <td><span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">{{ task.status
+                                }}</span></td>
+                        <td>{{ task.createdAt | date:'short' }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p *ngIf="tasks.length === 0" class="no-data">No tasks available</p>
+        </div>
+    </div>
+</div>

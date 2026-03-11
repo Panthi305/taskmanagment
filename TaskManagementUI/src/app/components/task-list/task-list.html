@@ -1,0 +1,47 @@
+<div class="page-container">
+    <div class="page-header">
+        <h2>All Tasks</h2>
+        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
+    </div>
+
+    <div class="filter-section">
+        <label>Filter by Status:</label>
+        <select [(ngModel)]="filterStatus" (change)="applyFilter()">
+            <option value="All">All</option>
+            <option value="Pending">Pending</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+        </select>
+    </div>
+
+    <div class="table-container">
+        <table *ngIf="filteredTasks.length > 0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Assigned By</th>
+                    <th>Assigned To</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr *ngFor="let task of filteredTasks">
+                    <td>{{ task.id }}</td>
+                    <td>{{ task.title }}</td>
+                    <td>{{ task.description }}</td>
+                    <td>{{ task.assignedByName }}</td>
+                    <td>{{ task.assignedToName }}</td>
+                    <td><span class="badge priority-{{ task.priority.toLowerCase() }}">{{ task.priority }}</span></td>
+                    <td><span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">{{ task.status
+                            }}</span></td>
+                    <td>{{ task.createdAt | date:'short' }}</td>
+                </tr>
+            </tbody>
+        </table>
+        <p *ngIf="filteredTasks.length === 0" class="no-data">No tasks found</p>
+    </div>
+</div>

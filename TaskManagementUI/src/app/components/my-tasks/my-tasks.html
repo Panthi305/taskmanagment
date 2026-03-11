@@ -1,0 +1,58 @@
+<div class="page-container">
+    <div class="page-header">
+        <h2>My Tasks</h2>
+        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
+    </div>
+
+    <div class="filter-section">
+        <label>Filter by Status:</label>
+        <select [(ngModel)]="filterStatus" (change)="applyFilter()">
+            <option value="All">All</option>
+            <option value="Pending">Pending</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+        </select>
+    </div>
+
+    <div class="tasks-container">
+        <div *ngIf="filteredTasks.length === 0" class="no-data">
+            No tasks found
+        </div>
+
+        <div *ngFor="let task of filteredTasks" class="task-card">
+            <div class="task-header">
+                <h3>{{ task.title }}</h3>
+                <span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">
+                    {{ task.status }}
+                </span>
+            </div>
+            <p class="task-description">{{ task.description }}</p>
+            <div class="task-meta">
+                <div class="meta-item">
+                    <strong>Priority:</strong>
+                    <span class="badge priority-{{ task.priority.toLowerCase() }}">{{ task.priority }}</span>
+                </div>
+                <div class="meta-item">
+                    <strong>Assigned By:</strong> {{ task.assignedByName }}
+                </div>
+                <div class="meta-item">
+                    <strong>Created:</strong> {{ task.createdAt | date:'short' }}
+                </div>
+                <div class="meta-item" *ngIf="task.startDate">
+                    <strong>Started:</strong> {{ task.startDate | date:'short' }}
+                </div>
+                <div class="meta-item" *ngIf="task.completedDate">
+                    <strong>Completed:</strong> {{ task.completedDate | date:'short' }}
+                </div>
+            </div>
+            <div class="task-actions">
+                <button *ngIf="canStart(task)" (click)="startTask(task.id)" class="btn-start">
+                    Start Task
+                </button>
+                <button *ngIf="canComplete(task)" (click)="completeTask(task.id)" class="btn-complete">
+                    Complete Task
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
