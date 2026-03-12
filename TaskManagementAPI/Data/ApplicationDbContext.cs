@@ -96,6 +96,7 @@ namespace TaskManagementAPI.Data
         public DbSet<TaskComment> TaskComments { get; set; }
         public DbSet<TaskProgressUpdate> TaskProgressUpdates { get; set; }
         public DbSet<TaskAttachment> TaskAttachments { get; set; }
+        public DbSet<AttachmentPermissionRequest> AttachmentPermissionRequests { get; set; }
 
         /*
          * ========================================================================
@@ -208,6 +209,27 @@ namespace TaskManagementAPI.Data
                 .HasOne(ta => ta.UploadedByUser)
                 .WithMany()
                 .HasForeignKey(ta => ta.UploadedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure AttachmentPermissionRequest → Task relationship
+            modelBuilder.Entity<AttachmentPermissionRequest>()
+                .HasOne(apr => apr.Task)
+                .WithMany()
+                .HasForeignKey(apr => apr.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure AttachmentPermissionRequest → RequestedByUser relationship
+            modelBuilder.Entity<AttachmentPermissionRequest>()
+                .HasOne(apr => apr.RequestedByUser)
+                .WithMany()
+                .HasForeignKey(apr => apr.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure AttachmentPermissionRequest → ReviewedByUser relationship
+            modelBuilder.Entity<AttachmentPermissionRequest>()
+                .HasOne(apr => apr.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(apr => apr.ReviewedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }

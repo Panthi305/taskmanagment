@@ -729,6 +729,120 @@ namespace TaskManagementAPI.Controllers
         }
 
         // ========================================================================
+        // PUT /api/task/{id} - UPDATE/EDIT TASK
+        // ========================================================================
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskDto updateTaskDto)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks
+                    .Include(t => t.AssignedByUser)
+                    .Include(t => t.AssignedToUser)
+                    .FirstOrDefaultAsync(t => t.Id == id);
+
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // COMPLETED TASK LOCK RULE: No one can modify completed tasks
+                if (task.Status == "Completed")
+                {
+                    return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+                }
+
+                // Only task creator can edit active tasks
+                if (task.AssignedBy != userId.Value)
+                {
+                    return StatusCode(403, new { message = "Only the task creator can edit this task" });
+                }
+
+                // Update only provided fields
+                if (!string.IsNullOrEmpty(updateTaskDto.Title))
+                {
+                    task.Title = updateTaskDto.Title;
+                }
+
+                if (!string.IsNullOrEmpty(updateTaskDto.Description))
+                {
+                    task.Description = updateTaskDto.Description;
+                }
+
+                if (updateTaskDto.AssignedTo.HasValue)
+                {
+                    // Validate new assignee exists and role hierarchy
+                    var newAssignee = await _context.Users.FindAsync(updateTaskDto.AssignedTo.Value);
+                    if (newAssignee == null)
+                    {
+                        return BadRequest(new { message = "Assigned user not found" });
+                    }
+
+                    // Role-based assignment validation
+                    if (userRole == "Admin")
+                    {
+                        if (newAssignee.Role != "Manager" && newAssignee.Role != "Employee")
+                        {
+                            return Forbid();
+                        }
+                    }
+                    else if (userRole == "Manager")
+                    {
+                        if (newAssignee.Role != "Employee")
+                        {
+                            return Forbid();
+                        }
+                    }
+
+                    task.AssignedTo = updateTaskDto.AssignedTo.Value;
+                }
+
+                if (!string.IsNullOrEmpty(updateTaskDto.Priority))
+                {
+                    task.Priority = updateTaskDto.Priority;
+                }
+
+                if (updateTaskDto.Deadline.HasValue)
+                {
+                    task.Deadline = updateTaskDto.Deadline.Value;
+                }
+
+                await _context.SaveChangesAsync();
+
+                var updatedTask = new TaskDto
+                {
+                    Id = task.Id,
+                    Title = task.Title,
+                    Description = task.Description,
+                    AssignedBy = task.AssignedBy,
+                    AssignedByName = task.AssignedByUser!.Name,
+                    AssignedTo = task.AssignedTo,
+                    AssignedToName = task.AssignedToUser!.Name,
+                    Priority = task.Priority,
+                    Status = task.Status,
+                    CreatedAt = task.CreatedAt,
+                    StartDate = task.StartDate,
+                    CompletedDate = task.CompletedDate,
+                    Deadline = task.Deadline
+                };
+
+                return Ok(updatedTask);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while updating the task", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
         // POST /api/task/{taskId}/progress - ADD PROGRESS UPDATE
         // ========================================================================
         [HttpPost("{taskId}/progress")]
@@ -746,6 +860,12 @@ namespace TaskManagementAPI.Controllers
                 if (task == null)
                 {
                     return NotFound(new { message = "Task not found" });
+                }
+
+                // COMPLETED TASK LOCK RULE: No one can add progress to completed tasks
+                if (task.Status == "Completed")
+                {
+                    return StatusCode(403, new { message = "This task is completed and cannot be modified." });
                 }
 
                 // Only assigned user can add progress
@@ -882,12 +1002,19 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
-                // Only assigned user can upload attachments
-                if (task.AssignedTo != userId.Value)
+                // COMPLETED TASK LOCK RULE: No one can upload attachments to completed tasks
+                if (task.Status == "Completed")
                 {
-                    return Forbid();
+                    return StatusCode(403, new { message = "This task is completed and cannot be modified." });
                 }
 
+                // Only task creator can upload attachments
+                if (task.AssignedBy != userId.Value)
+                {
+                    return StatusCode(403, new { message = "Only the task creator can upload attachments" });
+                }
+
+                // Upload file
                 var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "tasks");
                 Directory.CreateDirectory(uploadsFolder);
                 
@@ -1085,6 +1212,238 @@ namespace TaskManagementAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "An error occurred while retrieving comments", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/{taskId}/attachment-request - CREATE PERMISSION REQUEST
+        // ========================================================================
+        [HttpPost("{taskId}/attachment-request")]
+        public async Task<IActionResult> CreateAttachmentPermissionRequest(int taskId, [FromBody] CreateAttachmentPermissionRequestDto dto)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Can only request permission for completed tasks
+                if (task.Status != "Completed")
+                {
+                    return BadRequest(new { message = "Can only request permission for completed tasks" });
+                }
+
+                // Validate RequestType
+                if (dto.RequestType != "Attachment" && dto.RequestType != "Edit")
+                {
+                    return BadRequest(new { message = "RequestType must be either 'Attachment' or 'Edit'" });
+                }
+
+                // Check if user already has a pending request of the same type
+                var existingRequest = await _context.AttachmentPermissionRequests
+                    .Where(apr => apr.TaskId == taskId 
+                               && apr.RequestedByUserId == userId.Value 
+                               && apr.RequestType == dto.RequestType
+                               && apr.Status == "Pending")
+                    .FirstOrDefaultAsync();
+
+                if (existingRequest != null)
+                {
+                    return BadRequest(new { message = $"You already have a pending {dto.RequestType} request for this task" });
+                }
+
+                var request = new AttachmentPermissionRequest
+                {
+                    TaskId = taskId,
+                    RequestedByUserId = userId.Value,
+                    RequestType = dto.RequestType,
+                    Message = dto.Message,
+                    Status = "Pending",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.AttachmentPermissionRequests.Add(request);
+                await _context.SaveChangesAsync();
+
+                var user = await _context.Users.FindAsync(userId.Value);
+                var result = new AttachmentPermissionRequestDto
+                {
+                    Id = request.Id,
+                    TaskId = request.TaskId,
+                    RequestedByUserId = request.RequestedByUserId,
+                    RequestedByUserName = user!.Name,
+                    RequestType = request.RequestType,
+                    Message = request.Message,
+                    Status = request.Status,
+                    CreatedAt = request.CreatedAt
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while creating permission request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/attachment-requests - GET PERMISSION REQUESTS
+        // ========================================================================
+        [HttpGet("{taskId}/attachment-requests")]
+        public async Task<IActionResult> GetAttachmentPermissionRequests(int taskId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Only task creator can view requests
+                if (task.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var requests = await _context.AttachmentPermissionRequests
+                    .Include(apr => apr.RequestedByUser)
+                    .Include(apr => apr.ReviewedByUser)
+                    .Where(apr => apr.TaskId == taskId)
+                    .OrderByDescending(apr => apr.CreatedAt)
+                    .Select(apr => new AttachmentPermissionRequestDto
+                    {
+                        Id = apr.Id,
+                        TaskId = apr.TaskId,
+                        RequestedByUserId = apr.RequestedByUserId,
+                        RequestedByUserName = apr.RequestedByUser!.Name,
+                        RequestType = apr.RequestType,
+                        Message = apr.Message,
+                        Status = apr.Status,
+                        CreatedAt = apr.CreatedAt,
+                        ReviewedByUserId = apr.ReviewedByUserId,
+                        ReviewedByUserName = apr.ReviewedByUser != null ? apr.ReviewedByUser.Name : null,
+                        ReviewedAt = apr.ReviewedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(requests);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving permission requests", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/attachment-request/{id}/approve - APPROVE REQUEST
+        // ========================================================================
+        [HttpPost("attachment-request/{id}/approve")]
+        public async Task<IActionResult> ApproveAttachmentPermissionRequest(int id)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var request = await _context.AttachmentPermissionRequests
+                    .Include(apr => apr.Task)
+                    .Where(apr => apr.Id == id)
+                    .FirstOrDefaultAsync();
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Permission request not found" });
+                }
+
+                // Only task creator can approve
+                if (request.Task!.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                if (request.Status != "Pending")
+                {
+                    return BadRequest(new { message = "Request has already been reviewed" });
+                }
+
+                request.Status = "Approved";
+                request.ReviewedByUserId = userId.Value;
+                request.ReviewedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Permission request approved" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while approving request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/attachment-request/{id}/reject - REJECT REQUEST
+        // ========================================================================
+        [HttpPost("attachment-request/{id}/reject")]
+        public async Task<IActionResult> RejectAttachmentPermissionRequest(int id)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var request = await _context.AttachmentPermissionRequests
+                    .Include(apr => apr.Task)
+                    .Where(apr => apr.Id == id)
+                    .FirstOrDefaultAsync();
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Permission request not found" });
+                }
+
+                // Only task creator can reject
+                if (request.Task!.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                if (request.Status != "Pending")
+                {
+                    return BadRequest(new { message = "Request has already been reviewed" });
+                }
+
+                request.Status = "Rejected";
+                request.ReviewedByUserId = userId.Value;
+                request.ReviewedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Permission request rejected" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while rejecting request", error = ex.Message });
             }
         }
     }

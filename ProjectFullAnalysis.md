@@ -22,7 +22,8 @@
 19. [Project Structure](#project-structure)
 20. [Running the Application](#running-the-application)
 21. [Demo Credentials](#demo-credentials)
-22. [Future Enhancements](#future-enhancements)
+22. [Completed Task Lock Rule](#completed-task-lock-rule)
+23. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -3814,6 +3815,643 @@ Password: employee123
 
 ---
 
+## Task Editing and Attachment Permission Workflow
+
+### Overview
+
+The system implements strict permission controls for task editing and attachment uploads, with a comprehensive request-approval system for modifications after task completion.
+
+### Core Permission Rules
+
+#### 1. Task Edit Permissions
+
+**Who Can Edit:**
+- Only the task creator (user who assigned the task via `AssignedBy` field)
+
+**When Can Edit:**
+- Only when task status is NOT "Completed"
+- Allowed statuses: "Pending", "In Progress"
+
+**What Can Be Edited:**
+- Title
+- Description
+- Priority (Low, Medium, High)
+- Deadline
+
+**Enforcement:**
+```csharp
+// Backend validation in TaskController.cs
+if (task.AssignedBy != currentUserId)
+{
+    return StatusCode(403, "Only the task creator can edit this task");
+}
+
+if (task.Status == "Completed")
+{
+    return StatusCode(403, "Cannot edit completed tasks");
+}
+```
+
+#### 2. Attachment Upload Permissions
+
+**Who Can Upload:**
+- Only the task creator (`AssignedBy` user)
+- No one else, including the assigned employee
+
+**When Can Upload:**
+- Only when task status is NOT "Completed"
+- Allowed statuses: "Pending", "In Progress"
+
+**Enforcement:**
+```csharp
+// Backend validation in TaskController.cs
+if (task.AssignedBy != currentUserId)
+{
+    return StatusCode(403, "Only the task creator can upload attachments");
+}
+
+if (task.Status == "Completed")
+{
+    return StatusCode(403, "Cannot upload attachments to completed tasks");
+}
+```
+
+#### 3. Task Completion Lock
+
+When a task status becomes "Completed":
+- ❌ No editing allowed
+- ❌ No attachment uploads allowed
+- ❌ No modifications to task details
+- ✅ Can still view task and existing attachments
+- ✅ Can add comments
+- ✅ Can add progress updates (by assigned employee)
+
+### Post-Completion Permission Request System
+
+#### Database Schema
+
+**AttachmentPermissionRequests Table:**
+```sql
+CREATE TABLE AttachmentPermissionRequests (
+    Id INT PRIMARY KEY IDENTITY,
+    TaskId INT NOT NULL,
+    RequestedByUserId INT NOT NULL,
+    RequestType NVARCHAR(MAX) NOT NULL,  -- "Attachment" or "Edit"
+    Message NVARCHAR(MAX) NOT NULL,
+    Status NVARCHAR(MAX) NOT NULL,       -- "Pending", "Approved", "Rejected"
+    CreatedAt DATETIME2 NOT NULL,
+    ReviewedByUserId INT NULL,
+    ReviewedAt DATETIME2 NULL,
+    FOREIGN KEY (TaskId) REFERENCES Tasks(Id),
+    FOREIGN KEY (RequestedByUserId) REFERENCES Users(Id),
+    FOREIGN KEY (ReviewedByUserId) REFERENCES Users(Id)
+);
+```
+
+**Entity Model:**
+```csharp
+public class AttachmentPermissionRequest
+{
+    public int Id { get; set; }
+    public int TaskId { get; set; }
+    public int RequestedByUserId { get; set; }
+    public string RequestType { get; set; } = "Attachment";
+    public string Message { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? ReviewedByUserId { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+
+    public TaskItem? Task { get; set; }
+    public User? RequestedByUser { get; set; }
+    public User? ReviewedByUser { get; set; }
+}
+```
+
+#### API Endpoints
+
+**1. Create Permission Request**
+```http
+POST /api/task/{taskId}/attachment-request
+Content-Type: application/json
+
+{
+  "requestType": "Attachment",
+  "message": "Need to upload final documentation"
+}
+```
+
+**Authorization:**
+- Task must be completed
+- User must be authenticated
+- Cannot have duplicate pending requests
+
+**Response:**
+```json
+{
+  "id": 1,
+  "taskId": 5,
+  "requestedByUserId": 2,
+  "requestedByUserName": "John Manager",
+  "requestType": "Attachment",
+  "message": "Need to upload final documentation",
+  "status": "Pending",
+  "createdAt": "2026-03-13T10:30:00Z"
+}
+```
+
+**2. Get Permission Requests**
+```http
+GET /api/task/{taskId}/attachment-requests
+```
+
+**Authorization:**
+- Only task creator can view requests
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "taskId": 5,
+    "requestedByUserId": 2,
+    "requestedByUserName": "John Manager",
+    "requestType": "Attachment",
+    "message": "Need to upload final documentation",
+    "status": "Pending",
+    "createdAt": "2026-03-13T10:30:00Z",
+    "reviewedByUserId": null,
+    "reviewedByUserName": null,
+    "reviewedAt": null
+  }
+]
+```
+
+**3. Approve Permission Request**
+```http
+POST /api/task/attachment-request/{id}/approve
+```
+
+**Authorization:**
+- Only task creator can approve
+- Request must be in "Pending" status
+
+**Effect:**
+- Request status changes to "Approved"
+- Requesting user can now upload attachments to the completed task
+
+**4. Reject Permission Request**
+```http
+POST /api/task/attachment-request/{id}/reject
+```
+
+**Authorization:**
+- Only task creator can reject
+- Request must be in "Pending" status
+
+**Effect:**
+- Request status changes to "Rejected"
+- Requesting user remains blocked from uploading
+
+### Frontend Implementation
+
+#### Task Details Page Features
+
+**1. Edit Task Button**
+- Shown when: User is task creator AND task is not completed
+- Action: Enables inline editing of task details
+- Fields: Title, Description, Priority, Deadline
+
+**2. Upload Attachment Button**
+- Shown when: User is task creator AND task is not completed
+- Action: Opens file picker to upload attachment
+- Validation: File required before upload
+
+**3. Request Upload Permission Button**
+- Shown when: User is task creator AND task is completed
+- Action: Opens permission request form
+- Form fields: Message (required)
+
+**4. Permission Requests Section**
+- Shown when: User is task creator AND requests exist
+- Displays: All permission requests for the task
+- Actions: Approve/Reject buttons for pending requests
+- Status badges: Pending (yellow), Approved (green), Rejected (red)
+
+#### TypeScript Implementation
+
+```typescript
+// Check if user can edit task
+canEditTask(): boolean {
+    if (!this.task) return false;
+    return this.task.assignedBy === this.currentUserId && 
+           this.task.status !== 'Completed';
+}
+
+// Check if user can upload attachments
+canUploadAttachment(): boolean {
+    if (!this.task) return false;
+    return this.task.assignedBy === this.currentUserId && 
+           this.task.status !== 'Completed';
+}
+
+// Check if user can request permission
+canRequestPermission(): boolean {
+    if (!this.task) return false;
+    return this.task.assignedBy === this.currentUserId && 
+           this.task.status === 'Completed';
+}
+
+// Check if user can see permission requests
+canSeePermissionRequests(): boolean {
+    if (!this.task) return false;
+    return this.task.assignedBy === this.currentUserId;
+}
+```
+
+### Complete Workflow Examples
+
+#### Example 1: Normal Task Lifecycle
+
+1. **Admin creates task** (Admin is task creator)
+   - Status: Pending
+   - Admin can: Edit task, Upload attachments
+
+2. **Admin uploads requirements.pdf**
+   - ✅ Success (is creator, task not completed)
+
+3. **Employee starts task**
+   - Status: In Progress
+   - Admin can still: Edit task, Upload attachments
+
+4. **Admin uploads additional-specs.pdf**
+   - ✅ Success (is creator, task not completed)
+
+5. **Employee completes task**
+   - Status: Completed
+   - Admin can: View only, Request permission
+
+6. **Admin tries to upload final-report.pdf**
+   - ❌ Blocked: "Cannot upload attachments to completed tasks"
+
+#### Example 2: Post-Completion Upload Request
+
+1. **Task is completed**
+   - Admin wants to upload final documentation
+
+2. **Admin clicks "Request Upload Permission"**
+   - Opens permission request form
+
+3. **Admin submits request**
+   ```json
+   {
+     "requestType": "Attachment",
+     "message": "Need to upload final project documentation"
+   }
+   ```
+
+4. **Task creator (Admin) sees request**
+   - Request appears in "Permission Requests" section
+   - Shows: Requester name, message, date
+   - Actions: Approve, Reject
+
+5. **Task creator approves request**
+   - Request status: Pending → Approved
+
+6. **Admin can now upload**
+   - Upload button becomes available
+   - Can upload final-report.pdf
+   - ✅ Success (has approved permission)
+
+#### Example 3: Edit Task Workflow
+
+1. **Manager creates task**
+   - Status: Pending
+   - Manager sees "Edit Task" button
+
+2. **Manager clicks "Edit Task"**
+   - Form appears with current values
+   - Can edit: Title, Description, Priority, Deadline
+
+3. **Manager updates priority to "High"**
+   - Clicks "Save Changes"
+   - Task updated successfully
+
+4. **Task is completed**
+   - "Edit Task" button disappears
+   - Cannot edit anymore
+
+### Security Considerations
+
+**Backend Validation:**
+- All permission checks enforced in backend
+- Never rely on frontend validation alone
+- Session-based authentication required
+- Role-based authorization applied
+
+**Permission Checks:**
+```csharp
+// Always verify task creator
+if (task.AssignedBy != userId.Value)
+{
+    return StatusCode(403, new { message = "Forbidden" });
+}
+
+// Always check task status
+if (task.Status == "Completed")
+{
+    // Check for approved permission request
+    bool hasApprovedRequest = await _context.AttachmentPermissionRequests
+        .AnyAsync(apr => apr.TaskId == taskId 
+                      && apr.RequestedByUserId == userId.Value 
+                      && apr.RequestType == "Attachment"
+                      && apr.Status == "Approved");
+    
+    if (!hasApprovedRequest)
+    {
+        return StatusCode(403, new { message = "Permission required" });
+    }
+}
+```
+
+### Database Migration
+
+**Migration Name:** `AddRequestTypeToPermissionRequests`
+
+**Applied:** March 13, 2026
+
+**Changes:**
+- Added `RequestType` column to `AttachmentPermissionRequests` table
+- Type: `NVARCHAR(MAX)`
+- Default: Empty string
+- Values: "Attachment" or "Edit"
+
+**Command:**
+```bash
+dotnet ef migrations add AddRequestTypeToPermissionRequests --project TaskManagementAPI
+dotnet ef database update --project TaskManagementAPI
+```
+
+### Testing Checklist
+
+**Task Edit Permissions:**
+- ✅ Task creator can edit pending task
+- ✅ Task creator can edit in-progress task
+- ✅ Task creator cannot edit completed task
+- ✅ Non-creator cannot edit any task
+- ✅ Edit button shows/hides correctly
+
+**Attachment Upload Permissions:**
+- ✅ Task creator can upload to pending task
+- ✅ Task creator can upload to in-progress task
+- ✅ Task creator cannot upload to completed task
+- ✅ Non-creator cannot upload to any task
+- ✅ Upload button shows/hides correctly
+
+**Permission Request System:**
+- ✅ Can create request for completed task
+- ✅ Cannot create request for active task
+- ✅ Cannot create duplicate pending requests
+- ✅ Task creator can view all requests
+- ✅ Task creator can approve requests
+- ✅ Task creator can reject requests
+- ✅ Approved request allows upload
+- ✅ Rejected request blocks upload
+
+**UI/UX:**
+- ✅ Edit form appears/disappears correctly
+- ✅ Permission request form shows for completed tasks
+- ✅ Permission requests section displays properly
+- ✅ Status badges show correct colors
+- ✅ Approve/Reject buttons work correctly
+- ✅ Helpful messages shown when actions blocked
+
+### Summary
+
+The task editing and attachment permission system provides:
+
+1. **Strict Access Control**: Only task creators can edit tasks and upload attachments
+2. **Completion Lock**: Completed tasks are protected from modifications
+3. **Flexible Post-Completion Access**: Permission request system allows controlled modifications after completion
+4. **Audit Trail**: All permission requests tracked with timestamps and reviewers
+5. **User-Friendly UI**: Clear visual indicators and helpful messages
+6. **Backend Security**: All permissions enforced server-side with proper validation
+
+This implementation ensures data integrity while providing flexibility for legitimate post-completion modifications through a controlled approval process.
+
+---
+
+## Completed Task Lock Rule
+
+### Overview
+The system enforces a strict lock on completed tasks to ensure data integrity and prevent any modifications once a task reaches the "Completed" status. This rule applies universally to ALL users regardless of their role or relationship to the task.
+
+### Core Rule
+**When a task status becomes "Completed", the task becomes completely read-only.**
+
+No user can:
+- Edit task details (title, description, priority, deadline)
+- Upload attachments
+- Delete attachments
+- Add progress updates
+- Modify any task information
+
+This rule applies to:
+- Admin users
+- Manager users
+- Employee users
+- Task creator (AssignedBy)
+- Task assignee (AssignedTo)
+- All other users
+
+### Business Justification
+1. **Data Integrity:** Prevents tampering with completed work records
+2. **Audit Compliance:** Ensures completed tasks remain as historical records
+3. **Accountability:** Maintains accurate completion timestamps and final states
+4. **Simplicity:** Clear, unambiguous rule with no exceptions
+5. **Trust:** Stakeholders can rely on completed task data being immutable
+
+### Backend Implementation
+
+#### Validation Logic
+All modification endpoints check task status before allowing any changes:
+
+```csharp
+// Check if task is completed
+if (task.Status == "Completed")
+{
+    return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+}
+```
+
+#### Affected Endpoints
+
+**1. Edit Task Endpoint**
+```csharp
+[HttpPut("{id}")]
+public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskDto updateTaskDto)
+{
+    // COMPLETED TASK LOCK RULE: No one can modify completed tasks
+    if (task.Status == "Completed")
+    {
+        return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+    }
+    // ... proceed with update ...
+}
+```
+
+**2. Upload Attachment Endpoint**
+```csharp
+[HttpPost("{taskId}/attachments")]
+public async Task<IActionResult> UploadAttachment(int taskId, IFormFile file)
+{
+    // COMPLETED TASK LOCK RULE: No one can upload attachments to completed tasks
+    if (task.Status == "Completed")
+    {
+        return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+    }
+    // ... proceed with upload ...
+}
+```
+
+**3. Add Progress Update Endpoint**
+```csharp
+[HttpPost("{taskId}/progress")]
+public async Task<IActionResult> AddProgressUpdate(int taskId, [FromForm] CreateProgressUpdateDto dto, IFormFile? file)
+{
+    // COMPLETED TASK LOCK RULE: No one can add progress to completed tasks
+    if (task.Status == "Completed")
+    {
+        return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+    }
+    // ... proceed with progress update ...
+}
+```
+
+### Frontend Implementation
+
+#### TypeScript Component Logic
+
+```typescript
+// Check if task is completed
+isTaskCompleted(): boolean {
+    return this.task?.status === 'Completed';
+}
+
+// Edit permission - blocks completed tasks
+canEditTask(): boolean {
+    if (!this.task) return false;
+    if (this.task.status === 'Completed') return false;
+    return this.task.assignedBy === this.currentUserId;
+}
+
+// Upload permission - blocks completed tasks
+canUploadAttachment(): boolean {
+    if (!this.task) return false;
+    if (this.task.status === 'Completed') return false;
+    return this.task.assignedBy === this.currentUserId;
+}
+
+// Progress update permission - blocks completed tasks
+canAddProgress(): boolean {
+    if (!this.task) return false;
+    if (this.task.status === 'Completed') return false;
+    return this.task.assignedTo === this.currentUserId;
+}
+```
+
+#### HTML Template Changes
+
+```html
+<!-- Completed Task Warning Message -->
+<div class="info-message warning" *ngIf="isTaskCompleted()">
+    ⚠️ This task is completed. No further modifications are allowed.
+</div>
+
+<!-- Edit button - hidden for completed tasks -->
+<button *ngIf="canEditTask() && !isEditMode" 
+        (click)="enableEditMode()" 
+        class="btn-primary">
+    Edit Task
+</button>
+
+<!-- Upload form - hidden for completed tasks -->
+<div class="upload-form" *ngIf="canUploadAttachment()">
+    <input type="file" (change)="onAttachmentFileSelected($event)" />
+    <button (click)="uploadAttachment()" class="btn-primary">Upload</button>
+</div>
+
+<!-- Progress form - hidden for completed tasks -->
+<div class="progress-form" *ngIf="canAddProgress()">
+    <textarea [(ngModel)]="newProgressDescription"></textarea>
+    <button (click)="addProgressUpdate()" class="btn-primary">Add Update</button>
+</div>
+```
+
+### Permission Matrix
+
+| Action | Admin | Manager | Employee | Task Creator | Task Assignee | Status |
+|--------|-------|---------|----------|--------------|---------------|--------|
+| Edit Task | ✗ | ✗ | ✗ | ✗ | ✗ | Completed |
+| Upload Attachment | ✗ | ✗ | ✗ | ✗ | ✗ | Completed |
+| Add Progress | ✗ | ✗ | ✗ | ✗ | ✗ | Completed |
+| View Task | ✓ | ✓ | ✓ | ✓ | ✓ | Completed |
+| View Attachments | ✓ | ✓ | ✓ | ✓ | ✓ | Completed |
+| View Progress | ✓ | ✓ | ✓ | ✓ | ✓ | Completed |
+| Add Comments | ✓ | ✓ | ✓ | ✓ | ✓ | Completed |
+
+**Note:** Comments are still allowed on completed tasks as they don't modify the task itself.
+
+### Error Handling
+
+#### Backend Error Response
+**HTTP Status Code:** 403 Forbidden
+
+**Response Body:**
+```json
+{
+    "message": "This task is completed and cannot be modified."
+}
+```
+
+### Test Cases Summary
+
+| Test Case | Expected Result |
+|-----------|----------------|
+| Active task - Edit | ✓ Works |
+| Active task - Upload | ✓ Works |
+| Active task - Progress | ✓ Works |
+| Completed task - Edit (UI) | ✗ Button hidden |
+| Completed task - Edit (API) | ✗ HTTP 403 |
+| Completed task - Upload (UI) | ✗ Form hidden |
+| Completed task - Upload (API) | ✗ HTTP 403 |
+| Completed task - Progress (UI) | ✗ Form hidden |
+| Completed task - Progress (API) | ✗ HTTP 403 |
+| Admin override attempt | ✗ Blocked |
+| Manager override attempt | ✗ Blocked |
+
+### Benefits
+
+1. **Data Integrity:** Completed tasks remain as accurate historical records
+2. **Audit Compliance:** Immutable completion records for compliance requirements
+3. **Simplicity:** No complex permission logic or exception handling
+4. **Trust:** Stakeholders can rely on completed task data
+5. **Accountability:** Clear completion timestamps that cannot be altered
+6. **Performance:** Simpler validation logic improves response times
+
+### Conclusion
+
+The Completed Task Lock Rule provides a simple, secure, and effective way to protect completed task data. By enforcing a universal lock with no exceptions, the system ensures data integrity, supports audit compliance, and maintains trust in the task management process.
+
+**Key Takeaways:**
+- Completed tasks are completely read-only for ALL users
+- No exceptions based on role or relationship to task
+- Backend validation ensures security regardless of frontend state
+- Clear error messages guide users when modifications are blocked
+- Comments remain allowed as they don't modify task data
+
+---
+
 ## Future Enhancements
 
 ### Functional Enhancements
@@ -5747,3 +6385,494 @@ Uses standard HTML5 History API, supported since:
 The back button navigation fix improves user experience by respecting the user's navigation history. Using Angular's Location service provides a simple, standard, and maintainable solution that works consistently across all navigation scenarios.
 
 **Key Takeaway:** Always use `location.back()` for back buttons instead of hardcoded navigation paths. This respects the user's journey through the application and provides intuitive navigation behavior.
+
+
+---
+
+## Task Editing and Attachment Permission Workflow
+
+### Overview
+Implemented strict permission controls for task editing and attachment uploads, along with a request/approval system for post-completion attachments. This ensures data integrity and provides a controlled workflow for managing completed tasks.
+
+### Task Edit Permissions
+
+#### Rules
+Only the user who CREATED the task (AssignedBy) can edit it, and only when the task is NOT completed.
+
+**Permission Logic:**
+```
+IF currentUser == Task.AssignedBy AND Task.Status != "Completed"
+    → Allow edit
+ELSE
+    → Return HTTP 403 Forbidden
+```
+
+#### Implementation
+**Location:** `TaskManagementAPI/Controllers/TaskController.cs`
+
+```csharp
+// Check if user is task creator
+if (task.AssignedBy != userId.Value)
+{
+    return Forbid();
+}
+
+// Check if task is not completed
+if (task.Status == "Completed")
+{
+    return StatusCode(403, new { message = "Cannot edit completed tasks" });
+}
+```
+
+### Attachment Upload Permissions
+
+#### Rules
+Attachments can only be uploaded by:
+1. The task creator (AssignedBy) while task is active
+2. Users with approved permission requests (for completed tasks)
+
+**Permission Logic:**
+```
+IF Task.Status == "Completed"
+    → Reject with message to request permission
+    
+IF currentUser == Task.AssignedBy
+    → Allow upload
+    
+IF currentUser has ApprovedPermissionRequest
+    → Allow upload
+    
+ELSE
+    → Return HTTP 403 Forbidden
+```
+
+#### Implementation
+**Location:** `TaskManagementAPI/Controllers/TaskController.cs` - `UploadAttachment` method
+
+```csharp
+// Check if task is completed
+if (task.Status == "Completed")
+{
+    return StatusCode(403, new { message = "Cannot upload attachments to completed tasks. Please request permission first." });
+}
+
+// Check if user is task creator
+bool isTaskCreator = task.AssignedBy == userId.Value;
+
+// Check for approved permission request
+bool hasApprovedRequest = await _context.AttachmentPermissionRequests
+    .AnyAsync(apr => apr.TaskId == taskId 
+                  && apr.RequestedByUserId == userId.Value 
+                  && apr.Status == "Approved");
+
+if (!isTaskCreator && !hasApprovedRequest)
+{
+    return StatusCode(403, new { message = "Only the task creator can upload attachments" });
+}
+```
+
+### Task Completion Lock
+
+#### Rules
+When a task status becomes "Completed", the system locks the task:
+- Cannot edit task details
+- Cannot upload attachments (without approval)
+- Cannot delete attachments
+- Cannot modify task information
+
+#### Enforcement
+All modification endpoints check task status before allowing changes:
+
+```csharp
+if (task.Status == "Completed")
+{
+    return StatusCode(403, new { message = "Task is locked after completion" });
+}
+```
+
+### Post-Completion Attachment Request System
+
+#### Database Schema
+
+**Table: AttachmentPermissionRequests**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| Id | int | Primary key |
+| TaskId | int | Foreign key to Tasks |
+| RequestedByUserId | int | User requesting permission |
+| Message | nvarchar | Reason for request |
+| Status | nvarchar | Pending/Approved/Rejected |
+| CreatedAt | datetime2 | Request timestamp |
+| ReviewedByUserId | int? | User who reviewed |
+| ReviewedAt | datetime2? | Review timestamp |
+
+**Relationships:**
+- Task → AttachmentPermissionRequests (One-to-Many, Cascade Delete)
+- User → AttachmentPermissionRequests (RequestedBy, Restrict Delete)
+- User → AttachmentPermissionRequests (ReviewedBy, Restrict Delete)
+
+#### Workflow
+
+**Step 1: User Requests Permission**
+```
+User views completed task
+→ Clicks "Request Upload Permission"
+→ Enters message explaining need
+→ System creates request with Status="Pending"
+```
+
+**Step 2: Task Creator Reviews Request**
+```
+Task creator views task details
+→ Sees "Attachment Permission Requests" section
+→ Reviews requester name, message, date
+→ Clicks "Approve" or "Reject"
+```
+
+**Step 3: System Updates Request**
+```
+IF Approved:
+    → Status = "Approved"
+    → ReviewedBy = current user
+    → ReviewedAt = current timestamp
+    → User can now upload attachments
+
+IF Rejected:
+    → Status = "Rejected"
+    → ReviewedBy = current user
+    → ReviewedAt = current timestamp
+    → User remains blocked
+```
+
+### API Endpoints
+
+#### 1. Create Permission Request
+**Endpoint:** `POST /api/task/{taskId}/attachment-request`
+
+**Request Body:**
+```json
+{
+    "message": "Need to upload final documentation"
+}
+```
+
+**Response:**
+```json
+{
+    "id": 1,
+    "taskId": 123,
+    "requestedByUserId": 5,
+    "requestedByUserName": "John Doe",
+    "message": "Need to upload final documentation",
+    "status": "Pending",
+    "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+**Authorization:** Any authenticated user
+**Validation:**
+- Task must exist
+- Task must be completed
+- User cannot have existing pending request
+
+#### 2. Get Permission Requests
+**Endpoint:** `GET /api/task/{taskId}/attachment-requests`
+
+**Response:**
+```json
+[
+    {
+        "id": 1,
+        "taskId": 123,
+        "requestedByUserId": 5,
+        "requestedByUserName": "John Doe",
+        "message": "Need to upload final documentation",
+        "status": "Pending",
+        "createdAt": "2024-01-15T10:30:00Z",
+        "reviewedByUserId": null,
+        "reviewedByUserName": null,
+        "reviewedAt": null
+    }
+]
+```
+
+**Authorization:** Only task creator (AssignedBy)
+
+#### 3. Approve Permission Request
+**Endpoint:** `POST /api/task/attachment-request/{id}/approve`
+
+**Response:**
+```json
+{
+    "message": "Permission request approved"
+}
+```
+
+**Authorization:** Only task creator
+**Validation:**
+- Request must exist
+- Request status must be "Pending"
+- Current user must be task creator
+
+#### 4. Reject Permission Request
+**Endpoint:** `POST /api/task/attachment-request/{id}/reject`
+
+**Response:**
+```json
+{
+    "message": "Permission request rejected"
+}
+```
+
+**Authorization:** Only task creator
+**Validation:**
+- Request must exist
+- Request status must be "Pending"
+- Current user must be task creator
+
+### Angular UI Changes
+
+#### Task Details Page Updates
+
+**For Active Tasks (Status != Completed):**
+```typescript
+// Show if user is task creator
+if (task.status !== 'Completed' && task.assignedBy === currentUserId) {
+    // Show buttons:
+    // - Edit Task
+    // - Upload Attachment
+}
+```
+
+**For Completed Tasks:**
+```typescript
+// Hide edit and upload buttons
+// Show request button for non-creators
+if (task.status === 'Completed' && task.assignedBy !== currentUserId) {
+    // Show button:
+    // - Request Upload Permission
+}
+```
+
+**For Task Creators (Completed Tasks):**
+```typescript
+// Show permission requests section
+if (task.assignedBy === currentUserId) {
+    // Display section:
+    // - Attachment Permission Requests
+    //   - Requester name
+    //   - Message
+    //   - Request date
+    //   - Approve button
+    //   - Reject button
+}
+```
+
+#### Service Methods Added
+
+**Location:** `TaskManagementUI/src/app/services/task.service.ts`
+
+```typescript
+createAttachmentPermissionRequest(taskId: number, message: string): Observable<any> {
+    return this.http.post(`${this.apiUrl}/${taskId}/attachment-request`, 
+        { message }, 
+        { withCredentials: true });
+}
+
+getAttachmentPermissionRequests(taskId: number): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/${taskId}/attachment-requests`, 
+        { withCredentials: true });
+}
+
+approveAttachmentPermissionRequest(requestId: number): Observable<any> {
+    return this.http.post(`${this.apiUrl}/attachment-request/${requestId}/approve`, 
+        {}, 
+        { withCredentials: true });
+}
+
+rejectAttachmentPermissionRequest(requestId: number): Observable<any> {
+    return this.http.post(`${this.apiUrl}/attachment-request/${requestId}/reject`, 
+        {}, 
+        { withCredentials: true });
+}
+```
+
+### Permission Matrix
+
+| Action | Task Creator (Active) | Task Creator (Completed) | Assigned User (Active) | Assigned User (Completed) | Other User |
+|--------|----------------------|-------------------------|----------------------|--------------------------|------------|
+| Edit Task | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Upload Attachment | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Request Permission | N/A | N/A | ✓ | ✓ | ✓ |
+| Approve Request | N/A | ✓ | N/A | N/A | ✗ |
+| View Requests | N/A | ✓ | N/A | N/A | ✗ |
+| Upload (Approved) | N/A | N/A | N/A | ✓ | ✓ |
+
+### Security Features
+
+1. **Backend Validation:** All permissions enforced server-side
+2. **Status Checks:** Task completion status verified before modifications
+3. **User Verification:** Session-based authentication required
+4. **Role Validation:** Task creator identity verified from database
+5. **Request Tracking:** All permission requests logged with timestamps
+6. **Audit Trail:** ReviewedBy and ReviewedAt fields track approvals
+
+### Database Migration
+
+**Migration Name:** `AddAttachmentPermissionRequests`
+
+**Changes Applied:**
+1. Created `AttachmentPermissionRequests` table
+2. Added foreign key to `Tasks` (Cascade Delete)
+3. Added foreign key to `Users` for RequestedBy (Restrict Delete)
+4. Added foreign key to `Users` for ReviewedBy (Restrict Delete)
+5. Created indexes on TaskId, RequestedByUserId, ReviewedByUserId
+
+**Migration Commands:**
+```bash
+dotnet ef migrations add AddAttachmentPermissionRequests
+dotnet ef database update
+```
+
+### Test Cases
+
+#### Test Case 1: Task Creator Uploads to Active Task
+**Steps:**
+1. Login as task creator
+2. Navigate to active task details
+3. Upload attachment
+
+**Expected Result:**
+- Upload succeeds
+- Attachment appears in list
+- No permission request needed
+
+#### Test Case 2: Non-Creator Tries to Upload to Active Task
+**Steps:**
+1. Login as non-creator
+2. Navigate to active task details
+3. Try to upload attachment
+
+**Expected Result:**
+- Upload fails with 403 Forbidden
+- Error message: "Only the task creator can upload attachments"
+
+#### Test Case 3: Upload to Completed Task Without Permission
+**Steps:**
+1. Login as any user
+2. Navigate to completed task
+3. Try to upload attachment
+
+**Expected Result:**
+- Upload fails with 403 Forbidden
+- Error message: "Cannot upload attachments to completed tasks. Please request permission first."
+
+#### Test Case 4: Request Permission for Completed Task
+**Steps:**
+1. Login as non-creator
+2. Navigate to completed task
+3. Click "Request Upload Permission"
+4. Enter message and submit
+
+**Expected Result:**
+- Request created with Status="Pending"
+- Confirmation message displayed
+- Request appears in task creator's view
+
+#### Test Case 5: Task Creator Approves Request
+**Steps:**
+1. Login as task creator
+2. Navigate to completed task
+3. View permission requests section
+4. Click "Approve" on pending request
+
+**Expected Result:**
+- Request status changes to "Approved"
+- ReviewedBy and ReviewedAt fields populated
+- Requester can now upload attachments
+
+#### Test Case 6: Upload with Approved Permission
+**Steps:**
+1. Login as user with approved request
+2. Navigate to completed task
+3. Upload attachment
+
+**Expected Result:**
+- Upload succeeds
+- Attachment appears in list
+- Permission request remains approved
+
+#### Test Case 7: Task Creator Rejects Request
+**Steps:**
+1. Login as task creator
+2. Navigate to completed task
+3. View permission requests section
+4. Click "Reject" on pending request
+
+**Expected Result:**
+- Request status changes to "Rejected"
+- ReviewedBy and ReviewedAt fields populated
+- Requester cannot upload attachments
+
+#### Test Case 8: Duplicate Request Prevention
+**Steps:**
+1. Login as user
+2. Create permission request for task
+3. Try to create another request for same task
+
+**Expected Result:**
+- Second request fails
+- Error message: "You already have a pending request for this task"
+
+#### Test Case 9: Non-Creator Cannot Approve Request
+**Steps:**
+1. Login as non-creator
+2. Try to approve permission request via API
+
+**Expected Result:**
+- Request fails with 403 Forbidden
+- Only task creator can approve/reject
+
+### Benefits
+
+1. **Data Integrity:** Prevents unauthorized modifications to completed tasks
+2. **Controlled Workflow:** Structured process for post-completion changes
+3. **Audit Trail:** All requests and approvals tracked
+4. **Flexibility:** Allows legitimate post-completion uploads when needed
+5. **Security:** Multiple layers of permission checks
+6. **Transparency:** Clear communication between requesters and approvers
+
+### Use Cases
+
+**Use Case 1: Final Documentation**
+Employee completes task but later needs to upload final signed documents.
+- Employee requests permission with explanation
+- Manager reviews and approves
+- Employee uploads documents
+- Task remains completed with additional documentation
+
+**Use Case 2: Audit Requirements**
+Compliance team needs to attach audit reports to completed tasks.
+- Auditor requests permission
+- Task creator approves
+- Auditor uploads compliance documents
+- Audit trail maintained
+
+**Use Case 3: Correction Uploads**
+User realizes they uploaded wrong file to completed task.
+- User requests permission to upload correct file
+- Creator approves
+- User uploads correct file
+- Both files retained for history
+
+### Conclusion
+
+The task editing and attachment permission workflow provides robust control over task modifications while maintaining flexibility for legitimate post-completion needs. The request/approval system ensures that all changes are authorized and tracked, supporting both operational needs and compliance requirements.
+
+**Key Takeaways:**
+- Task creators have full control over their tasks while active
+- Completed tasks are locked to prevent unauthorized changes
+- Permission request system provides controlled access when needed
+- All actions are logged and auditable
+- Backend validation ensures security regardless of frontend state

@@ -1,0 +1,508 @@
+--
+-- PostgreSQL database dump
+--
+
+\restrict rCkHqJJgNERiaml9ZLA7Iv2yQpKoOIeV4Ciyo5AQZ7Xf9s3UMxlpyQOlOcHurlg
+
+-- Dumped from database version 18.1
+-- Dumped by pg_dump version 18.0
+
+-- Started on 2026-02-04 13:17:08
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+DROP DATABASE IF EXISTS hrms;
+--
+-- TOC entry 5334 (class 1262 OID 16755)
+-- Name: hrms; Type: DATABASE; Schema: -; Owner: postgres
+--
+
+CREATE DATABASE hrms WITH TEMPLATE = template0 ENCODING = 'UTF8' LOCALE_PROVIDER = libc LOCALE = 'English_India.1252';
+
+
+ALTER DATABASE hrms OWNER TO postgres;
+
+\unrestrict rCkHqJJgNERiaml9ZLA7Iv2yQpKoOIeV4Ciyo5AQZ7Xf9s3UMxlpyQOlOcHurlg
+\connect hrms
+\restrict rCkHqJJgNERiaml9ZLA7Iv2yQpKoOIeV4Ciyo5AQZ7Xf9s3UMxlpyQOlOcHurlg
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- TOC entry 245 (class 1259 OID 166356)
+-- Name: holidays_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.holidays_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.holidays_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 239 (class 1259 OID 166276)
+-- Name: job_openings_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.job_openings_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.job_openings_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 281 (class 1259 OID 167033)
+-- Name: leave_balance_adjustments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.leave_balance_adjustments_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.leave_balance_adjustments_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 269 (class 1259 OID 166766)
+-- Name: leave_balances_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.leave_balances_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.leave_balances_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 267 (class 1259 OID 166733)
+-- Name: leave_requests_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.leave_requests_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.leave_requests_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 223 (class 1259 OID 166098)
+-- Name: leave_types_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.leave_types_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.leave_types_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 261 (class 1259 OID 166599)
+-- Name: offer_letters_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.offer_letters_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.offer_letters_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 233 (class 1259 OID 166202)
+-- Name: org_units_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.org_units_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.org_units_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 289 (class 1259 OID 167273)
+-- Name: payroll_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.payroll_groups_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.payroll_groups_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 273 (class 1259 OID 166829)
+-- Name: payroll_items_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.payroll_items_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.payroll_items_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 241 (class 1259 OID 166296)
+-- Name: payroll_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.payroll_runs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.payroll_runs_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 275 (class 1259 OID 166872)
+-- Name: payslips_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.payslips_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.payslips_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 219 (class 1259 OID 166063)
+-- Name: roles_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.roles_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.roles_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 225 (class 1259 OID 166113)
+-- Name: statutory_configs_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.statutory_configs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.statutory_configs_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 285 (class 1259 OID 167091)
+-- Name: task_assignments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.task_assignments_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.task_assignments_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 287 (class 1259 OID 167121)
+-- Name: task_comments_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.task_comments_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.task_comments_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 279 (class 1259 OID 166939)
+-- Name: tasks_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.tasks_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.tasks_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 229 (class 1259 OID 166149)
+-- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.users_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.users_id_seq OWNER TO postgres;
+
+--
+-- TOC entry 5335 (class 0 OID 0)
+-- Dependencies: 245
+-- Name: holidays_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.holidays_id_seq', 1, false);
+
+
+--
+-- TOC entry 5336 (class 0 OID 0)
+-- Dependencies: 239
+-- Name: job_openings_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.job_openings_id_seq', 1, false);
+
+
+--
+-- TOC entry 5337 (class 0 OID 0)
+-- Dependencies: 281
+-- Name: leave_balance_adjustments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.leave_balance_adjustments_id_seq', 1, false);
+
+
+--
+-- TOC entry 5338 (class 0 OID 0)
+-- Dependencies: 269
+-- Name: leave_balances_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.leave_balances_id_seq', 1, false);
+
+
+--
+-- TOC entry 5339 (class 0 OID 0)
+-- Dependencies: 267
+-- Name: leave_requests_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.leave_requests_id_seq', 1, false);
+
+
+--
+-- TOC entry 5340 (class 0 OID 0)
+-- Dependencies: 223
+-- Name: leave_types_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.leave_types_id_seq', 4, true);
+
+
+--
+-- TOC entry 5341 (class 0 OID 0)
+-- Dependencies: 261
+-- Name: offer_letters_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.offer_letters_id_seq', 1, false);
+
+
+--
+-- TOC entry 5342 (class 0 OID 0)
+-- Dependencies: 233
+-- Name: org_units_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.org_units_id_seq', 1, false);
+
+
+--
+-- TOC entry 5343 (class 0 OID 0)
+-- Dependencies: 289
+-- Name: payroll_groups_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.payroll_groups_id_seq', 1, false);
+
+
+--
+-- TOC entry 5344 (class 0 OID 0)
+-- Dependencies: 273
+-- Name: payroll_items_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.payroll_items_id_seq', 1, false);
+
+
+--
+-- TOC entry 5345 (class 0 OID 0)
+-- Dependencies: 241
+-- Name: payroll_runs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.payroll_runs_id_seq', 1, false);
+
+
+--
+-- TOC entry 5346 (class 0 OID 0)
+-- Dependencies: 275
+-- Name: payslips_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.payslips_id_seq', 1, false);
+
+
+--
+-- TOC entry 5347 (class 0 OID 0)
+-- Dependencies: 219
+-- Name: roles_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.roles_id_seq', 3, true);
+
+
+--
+-- TOC entry 5348 (class 0 OID 0)
+-- Dependencies: 225
+-- Name: statutory_configs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.statutory_configs_id_seq', 1, false);
+
+
+--
+-- TOC entry 5349 (class 0 OID 0)
+-- Dependencies: 285
+-- Name: task_assignments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.task_assignments_id_seq', 1, false);
+
+
+--
+-- TOC entry 5350 (class 0 OID 0)
+-- Dependencies: 287
+-- Name: task_comments_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.task_comments_id_seq', 1, false);
+
+
+--
+-- TOC entry 5351 (class 0 OID 0)
+-- Dependencies: 279
+-- Name: tasks_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.tasks_id_seq', 1, false);
+
+
+--
+-- TOC entry 5352 (class 0 OID 0)
+-- Dependencies: 229
+-- Name: users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.users_id_seq', 1, true);
+
+
+-- Completed on 2026-02-04 13:17:09
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict rCkHqJJgNERiaml9ZLA7Iv2yQpKoOIeV4Ciyo5AQZ7Xf9s3UMxlpyQOlOcHurlg
+

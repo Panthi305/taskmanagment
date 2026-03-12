@@ -139,6 +139,18 @@ export class TaskService {
 
     /*
      * ========================================================================
+     * UPDATE TASK - EDIT TASK DETAILS (CREATOR ONLY, NOT COMPLETED)
+     * ========================================================================
+     * 
+     * Only task creator can edit task.
+     * Cannot edit completed tasks.
+     */
+    updateTask(id: number, task: any): Observable<Task> {
+        return this.http.put<Task>(`${this.apiUrl}/${id}`, task, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
      * GET TASK BY ID - RETRIEVE TASK DETAILS
      * ========================================================================
      */
@@ -190,5 +202,26 @@ export class TaskService {
 
     getComments(taskId: number): Observable<any[]> {
         return this.http.get<any[]>(`${this.apiUrl}/${taskId}/comments`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * ATTACHMENT PERMISSION REQUESTS
+     * ========================================================================
+     */
+    createAttachmentPermissionRequest(taskId: number, requestType: string, message: string): Observable<any> {
+        return this.http.post(`${this.apiUrl}/${taskId}/attachment-request`, { requestType, message }, { withCredentials: true });
+    }
+
+    getAttachmentPermissionRequests(taskId: number): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/${taskId}/attachment-requests`, { withCredentials: true });
+    }
+
+    approveAttachmentPermissionRequest(requestId: number): Observable<any> {
+        return this.http.post(`${this.apiUrl}/attachment-request/${requestId}/approve`, {}, { withCredentials: true });
+    }
+
+    rejectAttachmentPermissionRequest(requestId: number): Observable<any> {
+        return this.http.post(`${this.apiUrl}/attachment-request/${requestId}/reject`, {}, { withCredentials: true });
     }
 }

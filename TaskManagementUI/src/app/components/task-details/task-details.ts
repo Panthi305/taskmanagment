@@ -24,6 +24,10 @@ export class TaskDetailsComponent implements OnInit {
     selectedProgressFile: File | null = null;
     selectedAttachmentFile: File | null = null;
 
+    // Edit mode
+    isEditMode: boolean = false;
+    editedTask: any = {};
+
     currentUserId: number = 0;
     currentUserRole: string = '';
 
@@ -132,7 +136,7 @@ export class TaskDetailsComponent implements OnInit {
                 this.selectedProgressFile = null;
             },
             error: (err) => {
-                alert('Failed to add progress update');
+                alert('Failed to add progress update: ' + (err.error?.message || 'Unknown error'));
             }
         });
     }
@@ -187,6 +191,90 @@ export class TaskDetailsComponent implements OnInit {
 
     canModifyTask(): boolean {
         return this.task?.assignedTo === this.currentUserId;
+    }
+
+    canUploadAttachment(): boolean {
+        if (!this.task) return false;
+
+        // COMPLETED TASK LOCK RULE: No one can upload to completed tasks
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Only task creator can upload
+        if (this.task.assignedBy !== this.currentUserId) {
+            return false;
+        }
+
+        return true;
+    }
+
+    canEditTask(): boolean {
+        if (!this.task) return false;
+
+        // COMPLETED TASK LOCK RULE: No one can edit completed tasks
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Only task creator can edit active tasks
+        return this.task.assignedBy === this.currentUserId;
+    }
+
+    canAddProgress(): boolean {
+        if (!this.task) return false;
+
+        // COMPLETED TASK LOCK RULE: No one can add progress to completed tasks
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Only assigned user can add progress
+        return this.task.assignedTo === this.currentUserId;
+    }
+
+    isTaskCompleted(): boolean {
+        return this.task?.status === 'Completed';
+    }
+
+    canSeePermissionRequests(): boolean {
+        if (!this.task) return false;
+
+        // Only task creator can see permission requests
+        return this.task.assignedBy === this.currentUserId;
+    }
+
+    enableEditMode(): void {
+        if (!this.task) return;
+
+        this.isEditMode = true;
+        this.editedTask = {
+            title: this.task.title,
+            description: this.task.description,
+            priority: this.task.priority,
+            deadline: this.task.deadline
+        };
+    }
+
+    cancelEdit(): void {
+        this.isEditMode = false;
+        this.editedTask = {};
+    }
+
+    saveTask(): void {
+        if (!this.task) return;
+
+        this.taskService.updateTask(this.task.id, this.editedTask).subscribe({
+            next: (updatedTask) => {
+                this.task = updatedTask;
+                this.isEditMode = false;
+                this.editedTask = {};
+                alert('Task updated successfully');
+            },
+            error: (err) => {
+                alert('Failed to update task: ' + (err.error?.message || 'Unknown error'));
+            }
+        });
     }
 
     goBack(): void {

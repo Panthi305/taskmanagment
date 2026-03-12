@@ -9,7 +9,9 @@
     <div class="task-info" *ngIf="task">
         <div class="info-section">
             <h3>Task Information</h3>
-            <div class="info-grid">
+
+            <!-- View Mode -->
+            <div class="info-grid" *ngIf="!isEditMode">
                 <div class="info-item">
                     <label>Title:</label>
                     <span>{{ task.title }}</span>
@@ -45,10 +47,50 @@
                 </div>
             </div>
 
-            <div class="task-actions" *ngIf="canModifyTask()">
-                <button *ngIf="task.status === 'Pending'" (click)="startTask()" class="btn-primary">Start Task</button>
-                <button *ngIf="task.status === 'In Progress'" (click)="completeTask()" class="btn-success">Complete
+            <!-- Edit Mode -->
+            <div class="edit-form" *ngIf="isEditMode">
+                <div class="form-group">
+                    <label>Title:</label>
+                    <input type="text" [(ngModel)]="editedTask.title" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>Description:</label>
+                    <textarea [(ngModel)]="editedTask.description" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Priority:</label>
+                    <select [(ngModel)]="editedTask.priority" class="form-control">
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Deadline:</label>
+                    <input type="datetime-local" [(ngModel)]="editedTask.deadline" class="form-control" />
+                </div>
+                <div class="edit-actions">
+                    <button (click)="saveTask()" class="btn-success">Save Changes</button>
+                    <button (click)="cancelEdit()" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="task-actions">
+                <!-- Employee actions -->
+                <button *ngIf="canModifyTask() && task.status === 'Pending'" (click)="startTask()"
+                    class="btn-primary">Start Task</button>
+                <button *ngIf="canModifyTask() && task.status === 'In Progress'" (click)="completeTask()"
+                    class="btn-success">Complete Task</button>
+
+                <!-- Task creator actions -->
+                <button *ngIf="canEditTask() && !isEditMode" (click)="enableEditMode()" class="btn-primary">Edit
                     Task</button>
+            </div>
+
+            <!-- Completed Task Lock Message -->
+            <div class="info-message warning" *ngIf="isTaskCompleted()">
+                ⚠️ This task is completed. No further modifications are allowed.
             </div>
         </div>
 
@@ -62,11 +104,15 @@
                 </div>
                 <p *ngIf="attachments.length === 0">No attachments yet</p>
             </div>
-            <div class="upload-form" *ngIf="canModifyTask()">
+            <div class="upload-form" *ngIf="canUploadAttachment()">
                 <input type="file" (change)="onAttachmentFileSelected($event)" />
                 <button (click)="uploadAttachment()" [disabled]="!selectedAttachmentFile"
                     class="btn-primary">Upload</button>
             </div>
+            <p *ngIf="!canUploadAttachment() && !isTaskCompleted() && task.assignedBy !== currentUserId"
+                class="info-message">
+                Only the task creator can upload attachments
+            </p>
         </div>
 
         <div class="info-section">
@@ -83,7 +129,7 @@
                 </div>
                 <p *ngIf="progressUpdates.length === 0">No progress updates yet</p>
             </div>
-            <div class="progress-form" *ngIf="canModifyTask()">
+            <div class="progress-form" *ngIf="canAddProgress()">
                 <textarea [(ngModel)]="newProgressDescription" placeholder="Add progress update..."></textarea>
                 <input type="file" (change)="onProgressFileSelected($event)" />
                 <button (click)="addProgressUpdate()" [disabled]="!newProgressDescription.trim()"
