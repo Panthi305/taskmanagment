@@ -70,6 +70,39 @@ export class TaskService {
 
     /*
      * ========================================================================
+     * GET COMPLETED TASKS - RETRIEVE COMPLETED TASKS
+     * ========================================================================
+     * 
+     * Returns all completed tasks based on user role.
+     */
+    getCompletedTasks(): Observable<Task[]> {
+        return this.http.get<Task[]>(`${this.apiUrl}/completed`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * GET PENDING TASKS - RETRIEVE PENDING TASKS
+     * ========================================================================
+     * 
+     * Returns all pending tasks based on user role.
+     */
+    getPendingTasks(): Observable<Task[]> {
+        return this.http.get<Task[]>(`${this.apiUrl}/pending`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * GET CREATED BY ME - RETRIEVE TASKS CREATED BY CURRENT USER
+     * ========================================================================
+     * 
+     * Returns all tasks created by the current user (Admin/Manager only).
+     */
+    getCreatedByMe(): Observable<Task[]> {
+        return this.http.get<Task[]>(`${this.apiUrl}/created-by-me`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
      * CREATE TASK - CREATE NEW TASK (ADMIN/MANAGER ONLY)
      * ========================================================================
      * 

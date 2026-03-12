@@ -854,20 +854,71 @@ SELECT * FROM Tasks WHERE AssignedTo = @userId
 - `t => t.AssignedTo == userId.Value` is a lambda expression
 - Returns only tasks assigned to the current user
 
-#### 2. Filtering Pending Tasks
+#### 2. Filtering Tasks by Status (Completed)
 
-**Location**: Dashboard component (client-side)
+**Location**: TaskController.GetCompletedTasks()
 
-```typescript
-this.stats.pending = this.tasks.filter(t => t.status === 'Pending').length;
+```csharp
+var tasks = await _context.Tasks
+    .Include(t => t.AssignedByUser)
+    .Include(t => t.AssignedToUser)
+    .Where(t => t.Status == "Completed")
+    .ToListAsync();
+```
+
+**SQL Equivalent**:
+```sql
+SELECT * FROM Tasks WHERE Status = 'Completed'
 ```
 
 **Explanation**:
-- Filters tasks array to get only pending tasks
-- `.length` counts the filtered results
-- Demonstrates LINQ-like operations in TypeScript
+- Filters tasks to show only completed ones
+- Demonstrates LINQ filtering by string comparison
 
-#### 3. Filtering Tasks by Manager
+#### 3. Filtering Tasks by Status (Pending)
+
+**Location**: TaskController.GetPendingTasks()
+
+```csharp
+var tasks = await _context.Tasks
+    .Include(t => t.AssignedByUser)
+    .Include(t => t.AssignedToUser)
+    .Where(t => t.Status == "Pending")
+    .ToListAsync();
+```
+
+**SQL Equivalent**:
+```sql
+SELECT * FROM Tasks WHERE Status = 'Pending'
+```
+
+**Explanation**:
+- Filters tasks to show only pending ones
+- Useful for employees to see what tasks they need to start
+
+#### 4. Filtering Tasks Created by Current User
+
+**Location**: TaskController.GetTasksCreatedByMe()
+
+```csharp
+var tasks = await _context.Tasks
+    .Include(t => t.AssignedByUser)
+    .Include(t => t.AssignedToUser)
+    .Where(t => t.AssignedBy == userId.Value)
+    .ToListAsync();
+```
+
+**SQL Equivalent**:
+```sql
+SELECT * FROM Tasks WHERE AssignedBy = @userId
+```
+
+**Explanation**:
+- Manager sees only tasks they created
+- `AssignedBy` column stores the creator's user ID
+- Demonstrates filtering by creator
+
+#### 5. Filtering Tasks by Manager
 
 **Location**: TaskController.GetTasks()
 
@@ -887,7 +938,7 @@ SELECT * FROM Tasks WHERE AssignedBy = @userId
 - Manager sees only tasks they created
 - `AssignedBy` column stores the creator's user ID
 
-#### 4. Complex Query with Includes and Projection
+#### 6. Complex Query with Includes and Projection
 
 **Location**: TaskController.GetTasks()
 
@@ -933,7 +984,7 @@ WHERE t.AssignedTo = @userId
 - `Select()` projects data into DTO
 - `ToListAsync()` executes query asynchronously
 
-#### 5. Finding User by Email
+#### 7. Finding User by Email
 
 **Location**: AuthController.Login()
 
@@ -953,7 +1004,7 @@ SELECT TOP 1 * FROM Users WHERE Email = @email
 - `FirstOrDefaultAsync()` returns first match or null
 - Used for authentication
 
-#### 6. Finding Task with Multiple Conditions
+#### 8. Finding Task with Multiple Conditions
 
 **Location**: TaskController.StartTask()
 
@@ -973,6 +1024,19 @@ WHERE Id = @id AND AssignedTo = @userId
 - Multiple conditions with AND operator
 - Ensures task exists and belongs to user
 - Returns null if no match found
+
+#### 9. Filtering Pending Tasks (Client-Side)
+
+**Location**: Dashboard component (TypeScript)
+
+```typescript
+this.stats.pending = this.tasks.filter(t => t.status === 'Pending').length;
+```
+
+**Explanation**:
+- Filters tasks array to get only pending tasks
+- `.length` counts the filtered results
+- Demonstrates LINQ-like operations in TypeScript
 
 ### Common LINQ Methods Used
 
@@ -1363,6 +1427,55 @@ Retrieves tasks assigned to the current user.
 
 **Response**: Same format as GET /api/task
 
+#### GET /api/task/completed
+Retrieves all completed tasks based on user role.
+
+**Authorization**: All authenticated users
+
+**LINQ Query**:
+```csharp
+.Where(t => t.Status == "Completed")
+```
+
+**Role-Based Filtering**:
+- Admin: All completed tasks
+- Manager: Completed tasks they created
+- Employee: Completed tasks assigned to them
+
+**Response**: Same format as GET /api/task
+
+#### GET /api/task/pending
+Retrieves all pending tasks based on user role.
+
+**Authorization**: All authenticated users
+
+**LINQ Query**:
+```csharp
+.Where(t => t.Status == "Pending")
+```
+
+**Role-Based Filtering**:
+- Admin: All pending tasks
+- Manager: Pending tasks they created
+- Employee: Pending tasks assigned to them
+
+**Response**: Same format as GET /api/task
+
+#### GET /api/task/created-by-me
+Retrieves all tasks created by the current user.
+
+**Authorization**: Admin, Manager only
+
+**LINQ Query**:
+```csharp
+.Where(t => t.AssignedBy == userId.Value)
+```
+
+**Response**: Same format as GET /api/task
+
+**Error Responses**:
+- 403 Forbidden: Employee role (cannot create tasks)
+
 #### POST /api/task
 Creates a new task (Admin and Manager only).
 
@@ -1404,6 +1517,11 @@ Starts a task (changes status from Pending to In Progress).
 
 **Authorization**: Assigned employee only
 
+**STRICT ENFORCEMENT**:
+- Only users with "Employee" role can start tasks
+- Admin and Manager will receive 403 Forbidden
+- Task must be assigned to the current user
+
 **Response** (200 OK):
 ```json
 {
@@ -1412,6 +1530,7 @@ Starts a task (changes status from Pending to In Progress).
 ```
 
 **Error Responses**:
+- 403 Forbidden: User is Admin or Manager (not allowed to start tasks)
 - 404 Not Found: Task not found or not assigned to you
 - 400 Bad Request: Task can only be started from Pending status
 
@@ -1419,6 +1538,11 @@ Starts a task (changes status from Pending to In Progress).
 Completes a task (changes status from In Progress to Completed).
 
 **Authorization**: Assigned employee only
+
+**STRICT ENFORCEMENT**:
+- Only users with "Employee" role can complete tasks
+- Admin and Manager will receive 403 Forbidden
+- Task must be assigned to the current user
 
 **Response** (200 OK):
 ```json
@@ -1428,6 +1552,7 @@ Completes a task (changes status from In Progress to Completed).
 ```
 
 **Error Responses**:
+- 403 Forbidden: User is Admin or Manager (not allowed to complete tasks)
 - 404 Not Found: Task not found or not assigned to you
 - 400 Bad Request: Task can only be completed from In Progress status
 
@@ -1784,28 +1909,35 @@ Tasks follow a strict three-stage lifecycle:
    - New tasks always start with "Pending" status
    - AssignedBy is automatically set to current user
    - CreatedAt is set to current timestamp
+   - Employees CANNOT create tasks
 
 2. **Task Assignment**:
    - Tasks can only be assigned to users with "Employee" role
    - AssignedTo field stores the employee's user ID
+   - Only Admin and Manager can assign tasks
 
 3. **Starting Tasks**:
-   - Only the assigned employee can start their task
+   - **STRICT RULE**: Only the assigned employee can start their task
+   - **Admin and Manager CANNOT start tasks** - even if assigned to them
    - Task must be in "Pending" status
    - Cannot skip from "Pending" to "Completed"
    - StartDate is automatically set when task is started
+   - Backend validates user role is "Employee"
 
 4. **Completing Tasks**:
-   - Only the assigned employee can complete their task
+   - **STRICT RULE**: Only the assigned employee can complete their task
+   - **Admin and Manager CANNOT complete tasks** - even if assigned to them
    - Task must be in "In Progress" status
    - Cannot complete a "Pending" task (must start it first)
    - CompletedDate is automatically set when task is completed
+   - Backend validates user role is "Employee"
 
 5. **Status Transitions**:
-   - Pending → In Progress: Valid ✅
-   - In Progress → Completed: Valid ✅
+   - Pending → In Progress: Valid ✅ (Employee only)
+   - In Progress → Completed: Valid ✅ (Employee only)
    - Pending → Completed: Invalid ❌
    - Completed → In Progress: Invalid ❌ (no rollback)
+   - Admin/Manager attempting to start/complete: Forbidden ❌ (403 error)
 
 
 ### Task Creation Flow
@@ -1897,9 +2029,17 @@ Tasks follow a strict three-stage lifecycle:
 ```csharp
 // Check authentication
 var userId = HttpContext.Session.GetInt32("UserId");
+var userRole = HttpContext.Session.GetString("UserRole");
+
 if (userId == null)
 {
     return Unauthorized();
+}
+
+// STRICT RULE: Only employees can start tasks
+if (userRole == "Admin" || userRole == "Manager")
+{
+    return Forbid(); // 403 Forbidden
 }
 
 // Check task ownership
@@ -1921,6 +2061,46 @@ if (task.Status != "Pending")
 // Update task
 task.Status = "In Progress";
 task.StartDate = DateTime.UtcNow;
+await _context.SaveChangesAsync();
+```
+
+#### Backend Validation (TaskController.CompleteTask)
+
+```csharp
+// Check authentication
+var userId = HttpContext.Session.GetInt32("UserId");
+var userRole = HttpContext.Session.GetString("UserRole");
+
+if (userId == null)
+{
+    return Unauthorized();
+}
+
+// STRICT RULE: Only employees can complete tasks
+if (userRole == "Admin" || userRole == "Manager")
+{
+    return Forbid(); // 403 Forbidden
+}
+
+// Check task ownership
+var task = await _context.Tasks
+    .Where(t => t.Id == id && t.AssignedTo == userId.Value)
+    .FirstOrDefaultAsync();
+
+if (task == null)
+{
+    return NotFound(new { message = "Task not found or not assigned to you" });
+}
+
+// Check current status
+if (task.Status != "In Progress")
+{
+    return BadRequest(new { message = "Task can only be completed from In Progress status" });
+}
+
+// Update task
+task.Status = "Completed";
+task.CompletedDate = DateTime.UtcNow;
 await _context.SaveChangesAsync();
 ```
 
@@ -2199,14 +2379,46 @@ export const appConfig: ApplicationConfig = {
 };
 ```
 
-**Usage** (auth.service.ts):
+**Usage** (task.service.ts):
 ```typescript
-login(credentials: LoginRequest): Observable<User> {
-  return this.http.post<User>(
-    `${this.apiUrl}/login`, 
-    credentials, 
-    { withCredentials: true }
-  );
+// Get all tasks (role-based filtering)
+getTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(this.apiUrl, { withCredentials: true });
+}
+
+// Get tasks assigned to current user
+getMyTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/my`, { withCredentials: true });
+}
+
+// Get completed tasks
+getCompletedTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/completed`, { withCredentials: true });
+}
+
+// Get pending tasks
+getPendingTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/pending`, { withCredentials: true });
+}
+
+// Get tasks created by current user
+getCreatedByMe(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/created-by-me`, { withCredentials: true });
+}
+
+// Create new task
+createTask(task: CreateTaskRequest): Observable<Task> {
+  return this.http.post<Task>(this.apiUrl, task, { withCredentials: true });
+}
+
+// Start task (Employee only)
+startTask(id: number): Observable<any> {
+  return this.http.put(`${this.apiUrl}/start/${id}`, {}, { withCredentials: true });
+}
+
+// Complete task (Employee only)
+completeTask(id: number): Observable<any> {
+  return this.http.put(`${this.apiUrl}/complete/${id}`, {}, { withCredentials: true });
 }
 ```
 
@@ -2216,6 +2428,7 @@ login(credentials: LoginRequest): Observable<User> {
 - Automatic JSON parsing
 - Interceptor support
 - Error handling
+- Cookie support with withCredentials
 
 #### 8. RxJS Observables
 
@@ -3734,6 +3947,216 @@ Password: employee123
 
 ---
 
+## Project Improvements Implemented
+
+### 1. Strict Task Lifecycle Enforcement
+
+**Problem**: Original implementation allowed Admin and Manager to start/complete tasks.
+
+**Solution**: Added strict role validation in TaskController:
+
+```csharp
+// In StartTask method
+if (userRole == "Admin" || userRole == "Manager")
+{
+    return Forbid(); // 403 Forbidden
+}
+
+// In CompleteTask method
+if (userRole == "Admin" || userRole == "Manager")
+{
+    return Forbid(); // 403 Forbidden
+}
+```
+
+**Result**:
+- Only employees can start tasks (Pending → In Progress)
+- Only employees can complete tasks (In Progress → Completed)
+- Admin and Manager receive 403 Forbidden if they attempt these actions
+- Enforces proper task workflow and role separation
+
+### 2. Enhanced LINQ Filtering Endpoints
+
+**New Endpoints Added**:
+
+1. **GET /api/task/completed** - Filter completed tasks
+   ```csharp
+   .Where(t => t.Status == "Completed")
+   ```
+
+2. **GET /api/task/pending** - Filter pending tasks
+   ```csharp
+   .Where(t => t.Status == "Pending")
+   ```
+
+3. **GET /api/task/created-by-me** - Get tasks created by current user
+   ```csharp
+   .Where(t => t.AssignedBy == userId.Value)
+   ```
+
+**Benefits**:
+- More granular task filtering
+- Better performance (server-side filtering)
+- Cleaner component code
+- Demonstrates LINQ query capabilities
+
+### 3. Improved Task Model
+
+**Task Model Fields**:
+```csharp
+public class TaskItem
+{
+    public int Id { get; set; }                          // Primary key
+    public string Title { get; set; }                    // Task title
+    public string Description { get; set; }              // Task description
+    public int AssignedBy { get; set; }                  // Creator user ID
+    public int AssignedTo { get; set; }                  // Assignee user ID
+    public string Status { get; set; } = "Pending";      // Pending, In Progress, Completed
+    public string Priority { get; set; } = "Medium";     // Low, Medium, High
+    public DateTime CreatedAt { get; set; }              // Creation timestamp
+    public DateTime? StartDate { get; set; }             // When task was started
+    public DateTime? CompletedDate { get; set; }         // When task was completed
+    
+    // Navigation properties
+    public User? AssignedByUser { get; set; }
+    public User? AssignedToUser { get; set; }
+    public ICollection<TaskComment> Comments { get; set; }
+}
+```
+
+**All Required Fields Present**:
+- ✅ Id
+- ✅ Title
+- ✅ Description
+- ✅ AssignedBy
+- ✅ AssignedTo
+- ✅ Status
+- ✅ Priority
+- ✅ CreatedAt
+- ✅ StartDate
+- ✅ CompletedDate
+
+### 4. Enhanced Angular Task Service
+
+**New Service Methods**:
+
+```typescript
+// Get completed tasks
+getCompletedTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/completed`, { withCredentials: true });
+}
+
+// Get pending tasks
+getPendingTasks(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/pending`, { withCredentials: true });
+}
+
+// Get tasks created by current user
+getCreatedByMe(): Observable<Task[]> {
+  return this.http.get<Task[]>(`${this.apiUrl}/created-by-me`, { withCredentials: true });
+}
+```
+
+**Benefits**:
+- Components can easily filter tasks
+- Consistent API interface
+- Type-safe with TypeScript
+- Observable-based for reactive programming
+
+### 5. Validated Assignment Logic
+
+**Role-Based Task Creation**:
+
+```csharp
+// In CreateTask method
+if (userRole != "Admin" && userRole != "Manager")
+{
+    return Forbid(); // 403 Forbidden
+}
+```
+
+**Validation Rules**:
+- ✅ Only Admin and Manager can create tasks
+- ✅ Employees cannot create tasks
+- ✅ Employees cannot assign tasks to others
+- ✅ Backend validates role before task creation
+- ✅ Frontend hides "Create Task" button for employees
+
+### 6. Improved UI Components
+
+**Dashboard Component**:
+- Shows task statistics (total, pending, in progress, completed)
+- Role-based navigation (Create Task button only for Admin/Manager)
+- Real-time task counts
+
+**My Tasks Component**:
+- Employees see only their assigned tasks
+- Filter by status (All, Pending, In Progress, Completed)
+- Start and Complete buttons based on task status
+- Conditional rendering of action buttons
+
+**Task List Component**:
+- Admin sees all tasks
+- Manager sees tasks they created
+- Employee sees tasks assigned to them
+- Table view with all task details
+- Status and priority badges
+
+**Create Task Component**:
+- Only accessible to Admin and Manager
+- Dropdown to select employee for assignment
+- Priority selection
+- Form validation
+
+### Summary of Improvements
+
+| Improvement | Status | Impact |
+|-------------|--------|--------|
+| Strict task lifecycle enforcement | ✅ Implemented | High - Prevents unauthorized task status changes |
+| Enhanced LINQ filtering endpoints | ✅ Implemented | Medium - Better performance and code organization |
+| Validated task model | ✅ Verified | High - All required fields present |
+| Enhanced Angular service | ✅ Implemented | Medium - Better API abstraction |
+| Validated assignment logic | ✅ Implemented | High - Enforces role-based permissions |
+| Improved UI components | ✅ Verified | Medium - Better user experience |
+
+### Testing the Improvements
+
+**Test Scenario 1: Employee Starting Task**
+1. Login as employee1@test.com
+2. Navigate to "My Tasks"
+3. Click "Start Task" on a pending task
+4. ✅ Task status changes to "In Progress"
+5. ✅ StartDate is set
+
+**Test Scenario 2: Admin Attempting to Start Task**
+1. Login as admin@test.com
+2. Try to start a task via API
+3. ✅ Receives 403 Forbidden error
+4. ✅ Task status remains unchanged
+
+**Test Scenario 3: Manager Creating Task**
+1. Login as manager@test.com
+2. Navigate to "Create Task"
+3. Fill form and assign to employee
+4. ✅ Task created successfully
+5. ✅ Status is "Pending"
+6. ✅ AssignedBy is manager's ID
+
+**Test Scenario 4: Employee Attempting to Create Task**
+1. Login as employee1@test.com
+2. ✅ "Create Task" button is hidden
+3. Try to access /create-task directly
+4. ✅ Can access page but API returns 403 Forbidden
+
+**Test Scenario 5: Filtering Tasks**
+1. Login as any user
+2. Navigate to task list
+3. Use filter dropdown
+4. ✅ Tasks filtered by status
+5. ✅ Only relevant tasks shown
+
+---
+
 ## Conclusion
 
 The **Internal Task Management System** successfully demonstrates a complete full-stack application using modern web technologies. The system implements all required academic syllabus concepts including:
@@ -3749,6 +4172,14 @@ The **Internal Task Management System** successfully demonstrates a complete ful
 - **Exception Handling**: Comprehensive error handling with try-catch blocks
 - **LINQ**: Extensive use of LINQ for data querying and filtering
 
+**Recent Improvements**:
+- ✅ Strict task lifecycle enforcement (Employee-only start/complete)
+- ✅ Enhanced LINQ filtering endpoints (completed, pending, created-by-me)
+- ✅ Validated task model with all required fields
+- ✅ Enhanced Angular service with new methods
+- ✅ Validated assignment logic (Admin/Manager only)
+- ✅ Improved UI components with role-based rendering
+
 The system provides a solid foundation for understanding enterprise application development and can be extended with additional features as needed.
 
 ### Key Takeaways
@@ -3760,6 +4191,7 @@ The system provides a solid foundation for understanding enterprise application 
 5. **Scalability**: Layered architecture allows for easy scaling
 6. **Maintainability**: Clean code structure and comprehensive comments
 7. **User Experience**: Responsive UI with real-time updates
+8. **Role-Based Access**: Strict enforcement of permissions at all levels
 
 This project serves as an excellent reference for building similar enterprise applications and demonstrates best practices in full-stack web development.
 
@@ -3770,6 +4202,7 @@ This project serves as an excellent reference for building similar enterprise ap
 **Database**: SQL Server / LocalDB  
 **Architecture**: MVC + Layered Architecture  
 **Authentication**: Session-based with BCrypt  
+**Latest Update**: Enhanced with strict task lifecycle enforcement and additional LINQ endpoints
 
 ---
 

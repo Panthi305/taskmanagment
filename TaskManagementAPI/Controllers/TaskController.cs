@@ -330,12 +330,13 @@ namespace TaskManagementAPI.Controllers
          * 2. Task must be in "Pending" status
          * 3. Cannot skip statuses (e.g., Pending → Completed)
          * 4. StartDate is automatically set to current timestamp
+         * 5. Admin and Manager CANNOT start tasks assigned to employees
          * 
          * AUTHORIZATION:
          * -------------
          * - User must be authenticated
          * - Task must be assigned to the current user
-         * - Admins and Managers cannot start tasks assigned to employees
+         * - User must be an Employee (not Admin or Manager)
          * 
          * LINQ USAGE:
          * ----------
@@ -353,9 +354,17 @@ namespace TaskManagementAPI.Controllers
             try
             {
                 var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+                
                 if (userId == null)
                 {
                     return Unauthorized();
+                }
+
+                // STRICT RULE: Only employees can start tasks
+                if (userRole == "Admin" || userRole == "Manager")
+                {
+                    return Forbid(); // 403 - Admin/Manager cannot start tasks
                 }
 
                 // Find task that matches ID AND is assigned to current user
@@ -407,6 +416,7 @@ namespace TaskManagementAPI.Controllers
          * 2. Task must be in "In Progress" status
          * 3. Cannot complete a Pending task (must start it first)
          * 4. CompletedDate is automatically set to current timestamp
+         * 5. Admin and Manager CANNOT complete tasks assigned to employees
          * 
          * AUTHORIZATION:
          * -------------
@@ -424,9 +434,17 @@ namespace TaskManagementAPI.Controllers
             try
             {
                 var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+                
                 if (userId == null)
                 {
                     return Unauthorized();
+                }
+
+                // STRICT RULE: Only employees can complete tasks
+                if (userRole == "Admin" || userRole == "Manager")
+                {
+                    return Forbid(); // 403 - Admin/Manager cannot complete tasks
                 }
 
                 // LINQ query with multiple conditions
@@ -457,6 +475,203 @@ namespace TaskManagementAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "An error occurred while completing the task", error = ex.Message });
+            }
+        }
+
+        /*
+         * ========================================================================
+         * GET /api/task/completed - RETRIEVE COMPLETED TASKS
+         * ========================================================================
+         * 
+         * Returns all completed tasks based on user role.
+         * 
+         * LINQ FILTERING:
+         * --------------
+         * Where(t => t.Status == "Completed")
+         * 
+         * Filters tasks by completed status
+         */
+        [HttpGet("completed")]
+        public async Task<IActionResult> GetCompletedTasks()
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                // Start with completed tasks filter
+                IQueryable<TaskItem> query = _context.Tasks
+                    .Include(t => t.AssignedByUser)
+                    .Include(t => t.AssignedToUser)
+                    .Where(t => t.Status == "Completed");
+
+                // Apply role-based filtering
+                if (userRole == "Manager")
+                {
+                    query = query.Where(t => t.AssignedBy == userId.Value);
+                }
+                else if (userRole == "Employee")
+                {
+                    query = query.Where(t => t.AssignedTo == userId.Value);
+                }
+
+                var tasks = await query
+                    .Select(t => new TaskDto
+                    {
+                        Id = t.Id,
+                        Title = t.Title,
+                        Description = t.Description,
+                        AssignedBy = t.AssignedBy,
+                        AssignedByName = t.AssignedByUser!.Name,
+                        AssignedTo = t.AssignedTo,
+                        AssignedToName = t.AssignedToUser!.Name,
+                        Priority = t.Priority,
+                        Status = t.Status,
+                        CreatedAt = t.CreatedAt,
+                        StartDate = t.StartDate,
+                        CompletedDate = t.CompletedDate
+                    })
+                    .ToListAsync();
+
+                return Ok(tasks);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving completed tasks", error = ex.Message });
+            }
+        }
+
+        /*
+         * ========================================================================
+         * GET /api/task/pending - RETRIEVE PENDING TASKS
+         * ========================================================================
+         * 
+         * Returns all pending tasks based on user role.
+         * 
+         * LINQ FILTERING:
+         * --------------
+         * Where(t => t.Status == "Pending")
+         * 
+         * Filters tasks by pending status
+         */
+        [HttpGet("pending")]
+        public async Task<IActionResult> GetPendingTasks()
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                // Start with pending tasks filter
+                IQueryable<TaskItem> query = _context.Tasks
+                    .Include(t => t.AssignedByUser)
+                    .Include(t => t.AssignedToUser)
+                    .Where(t => t.Status == "Pending");
+
+                // Apply role-based filtering
+                if (userRole == "Manager")
+                {
+                    query = query.Where(t => t.AssignedBy == userId.Value);
+                }
+                else if (userRole == "Employee")
+                {
+                    query = query.Where(t => t.AssignedTo == userId.Value);
+                }
+
+                var tasks = await query
+                    .Select(t => new TaskDto
+                    {
+                        Id = t.Id,
+                        Title = t.Title,
+                        Description = t.Description,
+                        AssignedBy = t.AssignedBy,
+                        AssignedByName = t.AssignedByUser!.Name,
+                        AssignedTo = t.AssignedTo,
+                        AssignedToName = t.AssignedToUser!.Name,
+                        Priority = t.Priority,
+                        Status = t.Status,
+                        CreatedAt = t.CreatedAt,
+                        StartDate = t.StartDate,
+                        CompletedDate = t.CompletedDate
+                    })
+                    .ToListAsync();
+
+                return Ok(tasks);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving pending tasks", error = ex.Message });
+            }
+        }
+
+        /*
+         * ========================================================================
+         * GET /api/task/created-by-me - RETRIEVE TASKS CREATED BY CURRENT USER
+         * ========================================================================
+         * 
+         * Returns all tasks created by the current user (Admin/Manager).
+         * 
+         * LINQ FILTERING:
+         * --------------
+         * Where(t => t.AssignedBy == userId.Value)
+         * 
+         * Filters tasks by creator
+         */
+        [HttpGet("created-by-me")]
+        public async Task<IActionResult> GetTasksCreatedByMe()
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                // Only Admin and Manager can create tasks
+                if (userRole == "Employee")
+                {
+                    return Forbid();
+                }
+
+                var tasks = await _context.Tasks
+                    .Include(t => t.AssignedByUser)
+                    .Include(t => t.AssignedToUser)
+                    .Where(t => t.AssignedBy == userId.Value)
+                    .Select(t => new TaskDto
+                    {
+                        Id = t.Id,
+                        Title = t.Title,
+                        Description = t.Description,
+                        AssignedBy = t.AssignedBy,
+                        AssignedByName = t.AssignedByUser!.Name,
+                        AssignedTo = t.AssignedTo,
+                        AssignedToName = t.AssignedToUser!.Name,
+                        Priority = t.Priority,
+                        Status = t.Status,
+                        CreatedAt = t.CreatedAt,
+                        StartDate = t.StartDate,
+                        CompletedDate = t.CompletedDate
+                    })
+                    .ToListAsync();
+
+                return Ok(tasks);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving your created tasks", error = ex.Message });
             }
         }
     }
