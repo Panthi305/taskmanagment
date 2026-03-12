@@ -760,10 +760,22 @@ namespace TaskManagementAPI.Controllers
                     return StatusCode(403, new { message = "This task is completed and cannot be modified." });
                 }
 
-                // Only task creator can edit active tasks
-                if (task.AssignedBy != userId.Value)
+                // Check if user can edit: either task creator OR has approved edit request
+                bool isCreator = task.AssignedBy == userId.Value;
+                bool hasApprovedEditRequest = false;
+
+                if (!isCreator)
                 {
-                    return StatusCode(403, new { message = "Only the task creator can edit this task" });
+                    // Check if there's an approved edit request for this user
+                    hasApprovedEditRequest = await _context.TaskEditRequests
+                        .AnyAsync(ter => ter.TaskId == id && 
+                                       ter.RequestedByUserId == userId.Value && 
+                                       ter.Status == "Approved");
+                }
+
+                if (!isCreator && !hasApprovedEditRequest)
+                {
+                    return StatusCode(403, new { message = "Only the task creator or users with approved edit access can edit this task" });
                 }
 
                 // Update only provided fields
@@ -1444,6 +1456,261 @@ namespace TaskManagementAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "An error occurred while rejecting request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/{taskId}/edit-request - CREATE EDIT REQUEST
+        // ========================================================================
+        [HttpPost("{taskId}/edit-request")]
+        public async Task<IActionResult> CreateEditRequest(int taskId, [FromBody] CreateTaskEditRequestDto dto)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Cannot request edit access if you're the creator
+                if (task.AssignedBy == userId.Value)
+                {
+                    return BadRequest(new { message = "You are the task creator and can already edit this task" });
+                }
+
+                // Check if there's already a pending request
+                var existingRequest = await _context.TaskEditRequests
+                    .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value && ter.Status == "Pending")
+                    .FirstOrDefaultAsync();
+
+                if (existingRequest != null)
+                {
+                    return BadRequest(new { message = "You already have a pending edit request for this task" });
+                }
+
+                var editRequest = new TaskEditRequest
+                {
+                    TaskId = taskId,
+                    RequestedByUserId = userId.Value,
+                    RequestMessage = dto.RequestMessage,
+                    Status = "Pending",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.TaskEditRequests.Add(editRequest);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Edit request submitted successfully", requestId = editRequest.Id });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while creating edit request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/edit-requests - GET ALL EDIT REQUESTS FOR TASK
+        // ========================================================================
+        [HttpGet("{taskId}/edit-requests")]
+        public async Task<IActionResult> GetEditRequests(int taskId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Only task creator can view edit requests
+                if (task.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var requests = await _context.TaskEditRequests
+                    .Include(ter => ter.Task)
+                    .Include(ter => ter.RequestedByUser)
+                    .Include(ter => ter.ReviewedByUser)
+                    .Where(ter => ter.TaskId == taskId)
+                    .OrderByDescending(ter => ter.CreatedAt)
+                    .Select(ter => new TaskEditRequestDto
+                    {
+                        Id = ter.Id,
+                        TaskId = ter.TaskId,
+                        TaskTitle = ter.Task!.Title,
+                        RequestedByUserId = ter.RequestedByUserId,
+                        RequestedByUserName = ter.RequestedByUser!.Name,
+                        RequestMessage = ter.RequestMessage,
+                        Status = ter.Status,
+                        CreatedAt = ter.CreatedAt,
+                        ReviewedByUserId = ter.ReviewedByUserId,
+                        ReviewedByUserName = ter.ReviewedByUser != null ? ter.ReviewedByUser.Name : null,
+                        ReviewedAt = ter.ReviewedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(requests);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while fetching edit requests", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/edit-request/{id}/approve - APPROVE EDIT REQUEST
+        // ========================================================================
+        [HttpPost("edit-request/{id}/approve")]
+        public async Task<IActionResult> ApproveEditRequest(int id)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var request = await _context.TaskEditRequests
+                    .Include(ter => ter.Task)
+                    .Where(ter => ter.Id == id)
+                    .FirstOrDefaultAsync();
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Edit request not found" });
+                }
+
+                // Only task creator can approve
+                if (request.Task!.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                if (request.Status != "Pending")
+                {
+                    return BadRequest(new { message = "Request has already been reviewed" });
+                }
+
+                request.Status = "Approved";
+                request.ReviewedByUserId = userId.Value;
+                request.ReviewedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Edit request approved" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while approving request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/edit-request/{id}/reject - REJECT EDIT REQUEST
+        // ========================================================================
+        [HttpPost("edit-request/{id}/reject")]
+        public async Task<IActionResult> RejectEditRequest(int id)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var request = await _context.TaskEditRequests
+                    .Include(ter => ter.Task)
+                    .Where(ter => ter.Id == id)
+                    .FirstOrDefaultAsync();
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Edit request not found" });
+                }
+
+                // Only task creator can reject
+                if (request.Task!.AssignedBy != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                if (request.Status != "Pending")
+                {
+                    return BadRequest(new { message = "Request has already been reviewed" });
+                }
+
+                request.Status = "Rejected";
+                request.ReviewedByUserId = userId.Value;
+                request.ReviewedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Edit request rejected" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while rejecting request", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/edit-requests - GET ALL EDIT REQUESTS FOR CURRENT USER
+        // ========================================================================
+        [HttpGet("edit-requests")]
+        public async Task<IActionResult> GetAllEditRequests()
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                // Get all edit requests for tasks created by current user
+                var requests = await _context.TaskEditRequests
+                    .Include(ter => ter.Task)
+                    .Include(ter => ter.RequestedByUser)
+                    .Include(ter => ter.ReviewedByUser)
+                    .Where(ter => ter.Task!.AssignedBy == userId.Value)
+                    .OrderByDescending(ter => ter.CreatedAt)
+                    .Select(ter => new TaskEditRequestDto
+                    {
+                        Id = ter.Id,
+                        TaskId = ter.TaskId,
+                        TaskTitle = ter.Task!.Title,
+                        RequestedByUserId = ter.RequestedByUserId,
+                        RequestedByUserName = ter.RequestedByUser!.Name,
+                        RequestMessage = ter.RequestMessage,
+                        Status = ter.Status,
+                        CreatedAt = ter.CreatedAt,
+                        ReviewedByUserId = ter.ReviewedByUserId,
+                        ReviewedByUserName = ter.ReviewedByUser != null ? ter.ReviewedByUser.Name : null,
+                        ReviewedAt = ter.ReviewedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(requests);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving edit requests", error = ex.Message });
             }
         }
     }

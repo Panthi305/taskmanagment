@@ -28,6 +28,13 @@ export class TaskDetailsComponent implements OnInit {
     isEditMode: boolean = false;
     editedTask: any = {};
 
+    // Edit request
+    showEditRequestDialog: boolean = false;
+    editRequestMessage: string = '';
+    editRequests: any[] = [];
+    hasApprovedEditRequest: boolean = false;
+    hasPendingEditRequest: boolean = false;
+
     currentUserId: number = 0;
     currentUserRole: string = '';
 
@@ -65,6 +72,10 @@ export class TaskDetailsComponent implements OnInit {
                 this.loadComments(taskId);
                 this.loadProgressUpdates(taskId);
                 this.loadAttachments(taskId);
+                this.checkEditRequestStatus(taskId);
+                if (this.canSeeEditRequests()) {
+                    this.loadEditRequests(taskId);
+                }
                 this.loading = false;
             },
             error: (err) => {
@@ -217,8 +228,13 @@ export class TaskDetailsComponent implements OnInit {
             return false;
         }
 
-        // Only task creator can edit active tasks
-        return this.task.assignedBy === this.currentUserId;
+        // Task creator can always edit
+        if (this.task.assignedBy === this.currentUserId) {
+            return true;
+        }
+
+        // User with approved edit request can edit
+        return this.hasApprovedEditRequest;
     }
 
     canAddProgress(): boolean {
@@ -279,5 +295,127 @@ export class TaskDetailsComponent implements OnInit {
 
     goBack(): void {
         this.location.back();
+    }
+
+    // ========================================================================
+    // EDIT REQUEST METHODS
+    // ========================================================================
+
+    canRequestEditAccess(): boolean {
+        if (!this.task) return false;
+
+        // Cannot request if you're the creator
+        if (this.task.assignedBy === this.currentUserId) {
+            return false;
+        }
+
+        // Cannot request if task is completed
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Cannot request if already approved
+        if (this.hasApprovedEditRequest) {
+            return false;
+        }
+
+        // Cannot request if already pending
+        if (this.hasPendingEditRequest) {
+            return false;
+        }
+
+        return true;
+    }
+
+    canSeeEditRequests(): boolean {
+        if (!this.task) return false;
+
+        // Only task creator can see edit requests
+        return this.task.assignedBy === this.currentUserId;
+    }
+
+    checkEditRequestStatus(taskId: number): void {
+        // This is called for non-creators to check their own request status
+        if (!this.task || this.task.assignedBy === this.currentUserId) {
+            return;
+        }
+
+        this.taskService.getEditRequests(taskId).subscribe({
+            next: (requests) => {
+                const myRequest = requests.find(r => r.requestedByUserId === this.currentUserId);
+                if (myRequest) {
+                    this.hasApprovedEditRequest = myRequest.status === 'Approved';
+                    this.hasPendingEditRequest = myRequest.status === 'Pending';
+                }
+            },
+            error: (err) => {
+                // User might not have permission to view all requests, that's okay
+                console.log('Could not check edit request status');
+            }
+        });
+    }
+
+    loadEditRequests(taskId: number): void {
+        this.taskService.getEditRequests(taskId).subscribe({
+            next: (requests) => {
+                this.editRequests = requests;
+            },
+            error: (err) => {
+                console.error('Failed to load edit requests', err);
+            }
+        });
+    }
+
+    openEditRequestDialog(): void {
+        this.showEditRequestDialog = true;
+        this.editRequestMessage = '';
+    }
+
+    closeEditRequestDialog(): void {
+        this.showEditRequestDialog = false;
+        this.editRequestMessage = '';
+    }
+
+    submitEditRequest(): void {
+        if (!this.task) return;
+
+        this.taskService.createEditRequest(this.task.id, this.editRequestMessage).subscribe({
+            next: () => {
+                alert('Edit request submitted successfully');
+                this.closeEditRequestDialog();
+                this.hasPendingEditRequest = true;
+            },
+            error: (err) => {
+                alert('Failed to submit edit request: ' + (err.error?.message || 'Unknown error'));
+            }
+        });
+    }
+
+    approveEditRequest(requestId: number): void {
+        this.taskService.approveEditRequest(requestId).subscribe({
+            next: () => {
+                alert('Edit request approved');
+                if (this.task) {
+                    this.loadEditRequests(this.task.id);
+                }
+            },
+            error: (err) => {
+                alert('Failed to approve request: ' + (err.error?.message || 'Unknown error'));
+            }
+        });
+    }
+
+    rejectEditRequest(requestId: number): void {
+        this.taskService.rejectEditRequest(requestId).subscribe({
+            next: () => {
+                alert('Edit request rejected');
+                if (this.task) {
+                    this.loadEditRequests(this.task.id);
+                }
+            },
+            error: (err) => {
+                alert('Failed to reject request: ' + (err.error?.message || 'Unknown error'));
+            }
+        });
     }
 }

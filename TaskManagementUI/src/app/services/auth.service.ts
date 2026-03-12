@@ -72,8 +72,9 @@ export class AuthService {
     public currentUser$ = this.currentUserSubject.asObservable();
 
     constructor(private http: HttpClient) {
-        // Check if user has valid session on service initialization
-        // Restores auth state after page refresh
+        // Load user from localStorage first (for immediate state restoration)
+        this.loadUserFromStorage();
+        // Then check session with backend (for validation)
         this.checkSession();
     }
 
@@ -106,7 +107,10 @@ export class AuthService {
     login(credentials: LoginRequest): Observable<User> {
         return this.http.post<User>(`${this.apiUrl}/login`, credentials, { withCredentials: true })
             .pipe(
-                tap(user => this.currentUserSubject.next(user))  // Update auth state
+                tap(user => {
+                    this.currentUserSubject.next(user);  // Update auth state
+                    this.saveUserToStorage(user);  // Persist to localStorage
+                })
             );
     }
 
@@ -120,7 +124,10 @@ export class AuthService {
     logout(): Observable<any> {
         return this.http.post(`${this.apiUrl}/logout`, {}, { withCredentials: true })
             .pipe(
-                tap(() => this.currentUserSubject.next(null))  // Clear auth state
+                tap(() => {
+                    this.currentUserSubject.next(null);  // Clear auth state
+                    this.clearUserFromStorage();  // Clear localStorage
+                })
             );
     }
 
@@ -138,9 +145,45 @@ export class AuthService {
     checkSession(): void {
         this.http.get<User>(`${this.apiUrl}/session`, { withCredentials: true })
             .subscribe({
-                next: (user) => this.currentUserSubject.next(user),
-                error: () => this.currentUserSubject.next(null)
+                next: (user) => {
+                    this.currentUserSubject.next(user);
+                    this.saveUserToStorage(user);  // Update localStorage with fresh data
+                },
+                error: () => {
+                    this.currentUserSubject.next(null);
+                    this.clearUserFromStorage();  // Clear invalid session
+                }
             });
+    }
+
+    /*
+     * ========================================================================
+     * LOCAL STORAGE MANAGEMENT - PERSIST AUTH STATE
+     * ========================================================================
+     */
+
+    // Save user to localStorage for persistence across page refreshes
+    private saveUserToStorage(user: User): void {
+        localStorage.setItem('user', JSON.stringify(user));
+    }
+
+    // Load user from localStorage on app initialization
+    private loadUserFromStorage(): void {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                const user = JSON.parse(storedUser);
+                this.currentUserSubject.next(user);
+            } catch (error) {
+                // Invalid JSON, clear storage
+                this.clearUserFromStorage();
+            }
+        }
+    }
+
+    // Clear user from localStorage on logout
+    private clearUserFromStorage(): void {
+        localStorage.removeItem('user');
     }
 
     /*

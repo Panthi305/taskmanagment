@@ -60,6 +60,7 @@ export class DashboardComponent implements OnInit {
   // Component state
   currentUser: User | null = null;
   tasks: Task[] = [];
+  editRequests: any[] = [];
   stats = {
     total: 0,
     pending: 0,
@@ -115,6 +116,61 @@ export class DashboardComponent implements OnInit {
     this.taskService.getTasks().subscribe(tasks => {
       this.tasks = tasks;
       this.calculateStats();
+    });
+
+    // Load edit requests for Admin and Manager
+    if (this.canCreateTask()) {
+      this.loadEditRequests();
+    }
+  }
+
+  /*
+   * ==========================================================================
+   * LOAD EDIT REQUESTS - FETCH EDIT REQUESTS FOR TASKS CREATED BY USER
+   * ==========================================================================
+   */
+  loadEditRequests(): void {
+    this.taskService.getAllEditRequests().subscribe({
+      next: (requests) => {
+        this.editRequests = requests;
+      },
+      error: (err) => {
+        console.error('Failed to load edit requests', err);
+      }
+    });
+  }
+
+  /*
+   * ==========================================================================
+   * APPROVE EDIT REQUEST
+   * ==========================================================================
+   */
+  approveEditRequest(requestId: number): void {
+    this.taskService.approveEditRequest(requestId).subscribe({
+      next: () => {
+        alert('Edit request approved');
+        this.loadEditRequests();
+      },
+      error: (err) => {
+        alert('Failed to approve request: ' + (err.error?.message || 'Unknown error'));
+      }
+    });
+  }
+
+  /*
+   * ==========================================================================
+   * REJECT EDIT REQUEST
+   * ==========================================================================
+   */
+  rejectEditRequest(requestId: number): void {
+    this.taskService.rejectEditRequest(requestId).subscribe({
+      next: () => {
+        alert('Edit request rejected');
+        this.loadEditRequests();
+      },
+      error: (err) => {
+        alert('Failed to reject request: ' + (err.error?.message || 'Unknown error'));
+      }
     });
   }
 

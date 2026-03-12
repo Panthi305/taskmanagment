@@ -224,4 +224,29 @@ export class TaskService {
     rejectAttachmentPermissionRequest(requestId: number): Observable<any> {
         return this.http.post(`${this.apiUrl}/attachment-request/${requestId}/reject`, {}, { withCredentials: true });
     }
+
+    /*
+     * ========================================================================
+     * EDIT PERMISSION REQUESTS
+     * ========================================================================
+     */
+    createEditRequest(taskId: number, message: string): Observable<any> {
+        return this.http.post(`${this.apiUrl}/${taskId}/edit-request`, { requestMessage: message }, { withCredentials: true });
+    }
+
+    getEditRequests(taskId: number): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/${taskId}/edit-requests`, { withCredentials: true });
+    }
+
+    getAllEditRequests(): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/edit-requests`, { withCredentials: true });
+    }
+
+    approveEditRequest(requestId: number): Observable<any> {
+        return this.http.post(`${this.apiUrl}/edit-request/${requestId}/approve`, {}, { withCredentials: true });
+    }
+
+    rejectEditRequest(requestId: number): Observable<any> {
+        return this.http.post(`${this.apiUrl}/edit-request/${requestId}/reject`, {}, { withCredentials: true });
+    }
 }

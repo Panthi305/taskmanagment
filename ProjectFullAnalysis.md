@@ -23,7 +23,8 @@
 20. [Running the Application](#running-the-application)
 21. [Demo Credentials](#demo-credentials)
 22. [Completed Task Lock Rule](#completed-task-lock-rule)
-23. [Future Enhancements](#future-enhancements)
+23. [Edit Request Visibility and Authentication State Fix](#edit-request-visibility-and-authentication-state-fix)
+24. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -4449,6 +4450,805 @@ The Completed Task Lock Rule provides a simple, secure, and effective way to pro
 - Backend validation ensures security regardless of frontend state
 - Clear error messages guide users when modifications are blocked
 - Comments remain allowed as they don't modify task data
+
+---
+
+## Task Edit Access Request Workflow
+
+### Overview
+The Task Edit Access Request workflow allows assigned users (assignees) to request permission from the task creator to edit a task. This feature provides a controlled mechanism for collaborative task editing while maintaining the principle that only task creators have default edit permissions.
+
+### Business Justification
+1. **Flexibility:** Allows assignees to suggest changes when needed
+2. **Control:** Task creators maintain oversight of all modifications
+3. **Collaboration:** Enables team members to contribute to task refinement
+4. **Audit Trail:** All edit requests and approvals are tracked
+5. **Security:** Prevents unauthorized task modifications
+
+### Workflow Process
+
+#### Step 1: Request Edit Access
+- Assigned user (assignee) views a task they cannot edit
+- System displays "Request Edit Access" button
+- User clicks button and optionally provides a message explaining why they need edit access
+- System creates a new edit request with "Pending" status
+
+#### Step 2: Review Request
+- Task creator views the task details
+- System displays "Edit Access Requests" section showing all pending requests
+- Each request shows:
+  - Requester name
+  - Request message
+  - Request date
+  - Approve/Reject buttons
+
+#### Step 3: Approve or Reject
+- Task creator clicks "Approve" or "Reject" button
+- System updates request status and records reviewer information
+- Approved requests grant temporary edit access to the requester
+- Rejected requests block edit access
+
+#### Step 4: Edit Task (If Approved)
+- If approved, assignee can now edit the task
+- System validates edit permission by checking for approved edit request
+- Assignee can modify task details (title, description, priority, deadline)
+- Edit access remains active until task is completed
+
+### Database Schema
+
+#### TaskEditRequests Table
+```sql
+CREATE TABLE TaskEditRequests (
+    Id INT PRIMARY KEY IDENTITY,
+    TaskId INT NOT NULL,
+    RequestedByUserId INT NOT NULL,
+    RequestMessage NVARCHAR(MAX) NOT NULL,
+    Status NVARCHAR(MAX) NOT NULL,  -- 'Pending', 'Approved', 'Rejected'
+    CreatedAt DATETIME2 NOT NULL,
+    ReviewedByUserId INT NULL,
+    ReviewedAt DATETIME2 NULL,
+    
+    CONSTRAINT FK_TaskEditRequests_Tasks FOREIGN KEY (TaskId) 
+        REFERENCES Tasks(Id) ON DELETE CASCADE,
+    CONSTRAINT FK_TaskEditRequests_RequestedBy FOREIGN KEY (RequestedByUserId) 
+        REFERENCES Users(Id) ON DELETE NO ACTION,
+    CONSTRAINT FK_TaskEditRequests_ReviewedBy FOREIGN KEY (ReviewedByUserId) 
+        REFERENCES Users(Id) ON DELETE NO ACTION
+);
+```
+
+### API Endpoints
+
+#### 1. Create Edit Request
+**Endpoint:** `POST /api/task/{taskId}/edit-request`
+
+**Request Body:**
+```json
+{
+    "requestMessage": "I need to update the task description based on new requirements"
+}
+```
+
+**Response:**
+```json
+{
+    "message": "Edit request submitted successfully",
+    "requestId": 1
+}
+```
+
+**Validation:**
+- User must be authenticated
+- Task must exist
+- User cannot be the task creator
+- No pending request already exists for this user and task
+- Task must not be completed
+
+#### 2. Get Edit Requests
+**Endpoint:** `GET /api/task/{taskId}/edit-requests`
+
+**Response:**
+```json
+[
+    {
+        "id": 1,
+        "taskId": 5,
+        "requestedByUserId": 3,
+        "requestedByUserName": "John Doe",
+        "requestMessage": "Need to update description",
+        "status": "Pending",
+        "createdAt": "2026-03-13T10:30:00Z",
+        "reviewedByUserId": null,
+        "reviewedByUserName": null,
+        "reviewedAt": null
+    }
+]
+```
+
+**Authorization:**
+- Only task creator can view edit requests
+
+#### 3. Approve Edit Request
+**Endpoint:** `POST /api/task/edit-request/{id}/approve`
+
+**Response:**
+```json
+{
+    "message": "Edit request approved"
+}
+```
+
+**Validation:**
+- User must be the task creator
+- Request must exist
+- Request status must be "Pending"
+
+#### 4. Reject Edit Request
+**Endpoint:** `POST /api/task/edit-request/{id}/reject`
+
+**Response:**
+```json
+{
+    "message": "Edit request rejected"
+}
+```
+
+**Validation:**
+- User must be the task creator
+- Request must exist
+- Request status must be "Pending"
+
+### Permission Validation
+
+#### Updated Edit Task Logic
+The `UpdateTask` endpoint now checks for approved edit requests:
+
+```csharp
+// Check if user can edit: either task creator OR has approved edit request
+bool isCreator = task.AssignedBy == userId.Value;
+bool hasApprovedEditRequest = false;
+
+if (!isCreator)
+{
+    // Check if there's an approved edit request for this user
+    hasApprovedEditRequest = await _context.TaskEditRequests
+        .AnyAsync(ter => ter.TaskId == id && 
+                       ter.RequestedByUserId == userId.Value && 
+                       ter.Status == "Approved");
+}
+
+if (!isCreator && !hasApprovedEditRequest)
+{
+    return StatusCode(403, new { 
+        message = "Only the task creator or users with approved edit access can edit this task" 
+    });
+}
+```
+
+### Frontend Implementation
+
+#### Task Service Methods
+```typescript
+// Create edit request
+createEditRequest(taskId: number, message: string): Observable<any> {
+    return this.http.post(
+        `${this.apiUrl}/${taskId}/edit-request`, 
+        { requestMessage: message }, 
+        { withCredentials: true }
+    );
+}
+
+// Get edit requests
+getEditRequests(taskId: number): Observable<any[]> {
+    return this.http.get<any[]>(
+        `${this.apiUrl}/${taskId}/edit-requests`, 
+        { withCredentials: true }
+    );
+}
+
+// Approve edit request
+approveEditRequest(requestId: number): Observable<any> {
+    return this.http.post(
+        `${this.apiUrl}/edit-request/${requestId}/approve`, 
+        {}, 
+        { withCredentials: true }
+    );
+}
+
+// Reject edit request
+rejectEditRequest(requestId: number): Observable<any> {
+    return this.http.post(
+        `${this.apiUrl}/edit-request/${requestId}/reject`, 
+        {}, 
+        { withCredentials: true }
+    );
+}
+```
+
+#### Component Logic
+```typescript
+// Check if user can request edit access
+canRequestEditAccess(): boolean {
+    if (!this.task) return false;
+    if (this.task.assignedBy === this.currentUserId) return false;
+    if (this.task.status === 'Completed') return false;
+    if (this.hasApprovedEditRequest) return false;
+    if (this.hasPendingEditRequest) return false;
+    return true;
+}
+
+// Check if user can edit task
+canEditTask(): boolean {
+    if (!this.task) return false;
+    if (this.task.status === 'Completed') return false;
+    if (this.task.assignedBy === this.currentUserId) return true;
+    return this.hasApprovedEditRequest;
+}
+```
+
+#### UI Components
+
+**Request Edit Access Button:**
+```html
+<button *ngIf="canRequestEditAccess()" 
+        (click)="openEditRequestDialog()" 
+        class="btn-warning">
+    Request Edit Access
+</button>
+```
+
+**Edit Request Dialog:**
+```html
+<div class="modal-overlay" *ngIf="showEditRequestDialog">
+    <div class="modal-content">
+        <h3>Request Edit Access</h3>
+        <p>Send a request to the task creator to allow you to edit this task.</p>
+        <div class="form-group">
+            <label>Message (optional):</label>
+            <textarea [(ngModel)]="editRequestMessage" 
+                      placeholder="Explain why you need edit access..."
+                      class="form-control" rows="3"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button (click)="submitEditRequest()" class="btn-primary">
+                Submit Request
+            </button>
+            <button (click)="closeEditRequestDialog()" class="btn-secondary">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+```
+
+**Edit Requests Section (Task Creator View):**
+```html
+<div class="info-section" *ngIf="canSeeEditRequests()">
+    <h3>Edit Access Requests</h3>
+    <div class="requests-list">
+        <div *ngFor="let request of editRequests" class="request-item">
+            <div class="request-header">
+                <strong>{{ request.requestedByUserName }}</strong>
+                <span class="status-badge" [class]="request.status.toLowerCase()">
+                    {{ request.status }}
+                </span>
+            </div>
+            <p *ngIf="request.requestMessage">{{ request.requestMessage }}</p>
+            <small>Requested on {{ request.createdAt | date:'short' }}</small>
+            <div class="request-actions" *ngIf="request.status === 'Pending'">
+                <button (click)="approveEditRequest(request.id)" class="btn-success">
+                    Approve
+                </button>
+                <button (click)="rejectEditRequest(request.id)" class="btn-danger">
+                    Reject
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+```
+
+**Status Messages:**
+```html
+<!-- Pending request message -->
+<div class="info-message info" *ngIf="hasPendingEditRequest && !canEditTask()">
+    ⏳ Edit request pending approval
+</div>
+
+<!-- Approved request message -->
+<div class="info-message success" *ngIf="hasApprovedEditRequest && !isTaskCompleted()">
+    ✓ Edit access granted
+</div>
+```
+
+### Security Considerations
+
+1. **Backend Validation:** All permission checks are performed on the backend, not just the frontend
+2. **Session Authentication:** All endpoints require valid session authentication
+3. **Authorization Checks:** Each endpoint validates user permissions before processing
+4. **Status Validation:** Requests can only be approved/rejected if status is "Pending"
+5. **Completed Task Lock:** Edit requests cannot be created for completed tasks
+6. **Duplicate Prevention:** Users cannot create multiple pending requests for the same task
+
+### User Experience Flow
+
+#### For Assignee (Requesting Edit Access):
+1. View task details
+2. See "Request Edit Access" button (if eligible)
+3. Click button to open dialog
+4. Enter optional message explaining need for edit access
+5. Submit request
+6. See "Edit request pending approval" message
+7. Wait for task creator to review
+8. If approved: See "Edit access granted" message and "Edit Task" button becomes available
+9. If rejected: Continue viewing task without edit access
+
+#### For Task Creator (Reviewing Requests):
+1. View task details
+2. See "Edit Access Requests" section
+3. Review each request with requester name, message, and date
+4. Click "Approve" to grant edit access
+5. Click "Reject" to deny edit access
+6. See updated request status after action
+
+### Benefits
+
+1. **Controlled Collaboration:** Enables team collaboration while maintaining oversight
+2. **Audit Trail:** All requests and approvals are logged with timestamps
+3. **Flexibility:** Task creators can grant edit access on a case-by-case basis
+4. **Security:** Prevents unauthorized modifications
+5. **Transparency:** Clear communication between assignees and creators
+6. **User-Friendly:** Simple workflow with clear status indicators
+
+### Limitations
+
+1. **Single Approval:** Once approved, edit access remains until task completion
+2. **No Revocation:** Approved edit access cannot be revoked (except by completing the task)
+3. **No Expiration:** Edit requests don't expire automatically
+4. **No Notifications:** System doesn't send email/push notifications for requests
+
+### Conclusion
+
+The Task Edit Access Request workflow provides a balanced approach to task editing permissions. It maintains the security principle that only task creators can edit tasks by default, while providing a controlled mechanism for assignees to request and receive edit access when needed. The implementation includes comprehensive validation, clear user feedback, and a complete audit trail of all edit requests and approvals.
+
+---
+
+## Edit Request Visibility and Authentication State Fix
+
+### Overview
+This section documents two critical fixes implemented to improve the system's reliability and user experience:
+1. Edit request visibility for task creators (Admin/Manager)
+2. Authentication state persistence across page refreshes
+
+### Issue 1: Edit Request Visibility for Admin
+
+#### Problem
+Employees were sending edit requests for completed tasks, but these requests were not visible in the Admin/Manager dashboard. The requests existed in the database but there was no way for task creators to view and manage them.
+
+#### Root Cause
+The system only had an endpoint to retrieve edit requests for a specific task (`GET /api/task/{taskId}/edit-requests`), but no endpoint to retrieve all edit requests for tasks created by the current user.
+
+#### Solution
+
+**Backend Implementation:**
+
+Added a new API endpoint to retrieve all edit requests for tasks created by the current user:
+
+```csharp
+// GET /api/task/edit-requests - GET ALL EDIT REQUESTS FOR CURRENT USER
+[HttpGet("edit-requests")]
+public async Task<IActionResult> GetAllEditRequests()
+{
+    var userId = HttpContext.Session.GetInt32("UserId");
+    if (userId == null)
+    {
+        return Unauthorized();
+    }
+
+    // Get all edit requests for tasks created by current user
+    var requests = await _context.TaskEditRequests
+        .Include(ter => ter.Task)
+        .Include(ter => ter.RequestedByUser)
+        .Include(ter => ter.ReviewedByUser)
+        .Where(ter => ter.Task!.AssignedBy == userId.Value)
+        .OrderByDescending(ter => ter.CreatedAt)
+        .Select(ter => new TaskEditRequestDto
+        {
+            Id = ter.Id,
+            TaskId = ter.TaskId,
+            TaskTitle = ter.Task!.Title,
+            RequestedByUserId = ter.RequestedByUserId,
+            RequestedByUserName = ter.RequestedByUser!.Name,
+            RequestMessage = ter.RequestMessage,
+            Status = ter.Status,
+            CreatedAt = ter.CreatedAt,
+            ReviewedByUserId = ter.ReviewedByUserId,
+            ReviewedByUserName = ter.ReviewedByUser != null ? ter.ReviewedByUser.Name : null,
+            ReviewedAt = ter.ReviewedAt
+        })
+        .ToListAsync();
+
+    return Ok(requests);
+}
+```
+
+**Key Logic:**
+- Filters requests where `Task.AssignedBy == currentUserId`
+- This ensures only the task creator sees requests for their tasks
+- Includes task title, requester name, and reviewer information
+- Orders by creation date (newest first)
+
+**DTO Enhancement:**
+
+Added `TaskTitle` field to `TaskEditRequestDto`:
+
+```csharp
+public class TaskEditRequestDto
+{
+    public int Id { get; set; }
+    public int TaskId { get; set; }
+    public string TaskTitle { get; set; } = string.Empty;  // NEW FIELD
+    public int RequestedByUserId { get; set; }
+    public string RequestedByUserName { get; set; } = string.Empty;
+    public string RequestMessage { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public int? ReviewedByUserId { get; set; }
+    public string? ReviewedByUserName { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+}
+```
+
+**Frontend Implementation:**
+
+Added service method in `TaskService`:
+
+```typescript
+getAllEditRequests(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/edit-requests`, { withCredentials: true });
+}
+```
+
+Updated `DashboardComponent` to load and display edit requests:
+
+```typescript
+export class DashboardComponent implements OnInit {
+  editRequests: any[] = [];
+
+  loadTasks(): void {
+    this.taskService.getTasks().subscribe(tasks => {
+      this.tasks = tasks;
+      this.calculateStats();
+    });
+
+    // Load edit requests for Admin and Manager
+    if (this.canCreateTask()) {
+      this.loadEditRequests();
+    }
+  }
+
+  loadEditRequests(): void {
+    this.taskService.getAllEditRequests().subscribe({
+      next: (requests) => {
+        this.editRequests = requests;
+      },
+      error: (err) => {
+        console.error('Failed to load edit requests', err);
+      }
+    });
+  }
+
+  approveEditRequest(requestId: number): void {
+    this.taskService.approveEditRequest(requestId).subscribe({
+      next: () => {
+        alert('Edit request approved');
+        this.loadEditRequests();
+      },
+      error: (err) => {
+        alert('Failed to approve request');
+      }
+    });
+  }
+
+  rejectEditRequest(requestId: number): void {
+    this.taskService.rejectEditRequest(requestId).subscribe({
+      next: () => {
+        alert('Edit request rejected');
+        this.loadEditRequests();
+      },
+      error: (err) => {
+        alert('Failed to reject request');
+      }
+    });
+  }
+}
+```
+
+**Dashboard UI:**
+
+Added "Edit Access Requests" section to dashboard:
+
+```html
+<div class="edit-requests" *ngIf="canCreateTask() && editRequests.length > 0">
+    <h3>Edit Access Requests</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Task Name</th>
+                <th>Requested By</th>
+                <th>Message</th>
+                <th>Request Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr *ngFor="let request of editRequests">
+                <td>{{ request.taskTitle }}</td>
+                <td>{{ request.requestedByUserName }}</td>
+                <td>{{ request.requestMessage }}</td>
+                <td>{{ request.createdAt | date:'short' }}</td>
+                <td><span class="badge status-{{ request.status.toLowerCase() }}">{{ request.status }}</span></td>
+                <td>
+                    <button *ngIf="request.status === 'Pending'" 
+                            (click)="approveEditRequest(request.id)" 
+                            class="btn-success btn-sm">
+                        Approve
+                    </button>
+                    <button *ngIf="request.status === 'Pending'" 
+                            (click)="rejectEditRequest(request.id)" 
+                            class="btn-danger btn-sm">
+                        Reject
+                    </button>
+                    <span *ngIf="request.status !== 'Pending'">
+                        {{ request.status }} by {{ request.reviewedByUserName }}
+                    </span>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+```
+
+### Issue 2: Role Changes After Refresh
+
+#### Problem
+When refreshing the page, the dashboard sometimes switched roles (Admin became Employee, or vice versa). However, navigating back showed the correct role again. This indicated that Angular's authentication state was not persisted correctly across page refreshes.
+
+#### Root Cause
+The authentication state was only stored in memory (BehaviorSubject). When the page refreshed:
+1. Angular app reloaded completely
+2. All in-memory state was lost
+3. `checkSession()` was called to restore state from backend
+4. There was a brief moment where the user appeared logged out
+5. This caused flickering and inconsistent role display
+
+#### Solution
+
+**localStorage Persistence:**
+
+Updated `AuthService` to persist authentication state in localStorage:
+
+```typescript
+@Injectable({
+    providedIn: 'root'
+})
+export class AuthService {
+    private currentUserSubject = new BehaviorSubject<User | null>(null);
+    public currentUser$ = this.currentUserSubject.asObservable();
+
+    constructor(private http: HttpClient) {
+        // Load user from localStorage first (for immediate state restoration)
+        this.loadUserFromStorage();
+        // Then check session with backend (for validation)
+        this.checkSession();
+    }
+
+    login(credentials: LoginRequest): Observable<User> {
+        return this.http.post<User>(`${this.apiUrl}/login`, credentials, { withCredentials: true })
+            .pipe(
+                tap(user => {
+                    this.currentUserSubject.next(user);
+                    this.saveUserToStorage(user);  // Persist to localStorage
+                })
+            );
+    }
+
+    logout(): Observable<any> {
+        return this.http.post(`${this.apiUrl}/logout`, {}, { withCredentials: true })
+            .pipe(
+                tap(() => {
+                    this.currentUserSubject.next(null);
+                    this.clearUserFromStorage();  // Clear localStorage
+                })
+            );
+    }
+
+    checkSession(): void {
+        this.http.get<User>(`${this.apiUrl}/session`, { withCredentials: true })
+            .subscribe({
+                next: (user) => {
+                    this.currentUserSubject.next(user);
+                    this.saveUserToStorage(user);  // Update localStorage
+                },
+                error: () => {
+                    this.currentUserSubject.next(null);
+                    this.clearUserFromStorage();  // Clear invalid session
+                }
+            });
+    }
+
+    // Save user to localStorage for persistence
+    private saveUserToStorage(user: User): void {
+        localStorage.setItem('user', JSON.stringify(user));
+    }
+
+    // Load user from localStorage on app initialization
+    private loadUserFromStorage(): void {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            try {
+                const user = JSON.parse(storedUser);
+                this.currentUserSubject.next(user);
+            } catch (error) {
+                this.clearUserFromStorage();
+            }
+        }
+    }
+
+    // Clear user from localStorage on logout
+    private clearUserFromStorage(): void {
+        localStorage.removeItem('user');
+    }
+}
+```
+
+**How It Works:**
+
+1. **On Login:**
+   - User credentials are validated by backend
+   - Backend creates session and returns user data
+   - Frontend saves user to both BehaviorSubject and localStorage
+   - User can now navigate the app
+
+2. **On Page Refresh:**
+   - Angular app reloads
+   - AuthService constructor runs
+   - `loadUserFromStorage()` immediately restores user from localStorage
+   - UI shows correct role instantly (no flickering)
+   - `checkSession()` validates with backend in background
+   - If session is valid, localStorage is updated with fresh data
+   - If session is invalid, user is logged out and localStorage is cleared
+
+3. **On Logout:**
+   - Backend destroys session
+   - Frontend clears both BehaviorSubject and localStorage
+   - User is redirected to login page
+
+**Benefits:**
+
+1. **Instant State Restoration:** User role appears immediately on refresh
+2. **No Flickering:** Dashboard doesn't switch between roles
+3. **Consistent Experience:** Role remains stable across refreshes
+4. **Backend Validation:** Session is still validated with backend
+5. **Security:** Invalid sessions are detected and cleared
+
+### Testing
+
+#### Test Case 1: Edit Request Visibility
+**Steps:**
+1. Login as Employee
+2. Navigate to a completed task
+3. Request edit permission
+4. Logout
+5. Login as Admin (task creator)
+6. View dashboard
+
+**Expected Result:**
+- ✓ Edit request appears in "Edit Access Requests" section
+- ✓ Shows task name, requester name, message, and date
+- ✓ Approve and Reject buttons are visible
+- ✓ Clicking Approve grants permission
+- ✓ Clicking Reject denies permission
+
+#### Test Case 2: Admin Refresh Persistence
+**Steps:**
+1. Login as Admin
+2. View dashboard (shows Admin role)
+3. Refresh page (F5)
+
+**Expected Result:**
+- ✓ Dashboard still shows Admin role
+- ✓ No flickering or role switching
+- ✓ Edit requests section remains visible
+- ✓ All admin features remain accessible
+
+#### Test Case 3: Employee Refresh Persistence
+**Steps:**
+1. Login as Employee
+2. View dashboard (shows Employee role)
+3. Refresh page (F5)
+
+**Expected Result:**
+- ✓ Dashboard still shows Employee role
+- ✓ No flickering or role switching
+- ✓ "My Tasks" button remains visible
+- ✓ "Create Task" button remains hidden
+
+#### Test Case 4: Manager Refresh Persistence
+**Steps:**
+1. Login as Manager
+2. View dashboard (shows Manager role)
+3. Refresh page (F5)
+
+**Expected Result:**
+- ✓ Dashboard still shows Manager role
+- ✓ No flickering or role switching
+- ✓ Edit requests section visible (if any exist)
+- ✓ "Create Task" button remains visible
+
+#### Test Case 5: Browser Back Button
+**Steps:**
+1. Login as Admin
+2. Navigate to task list
+3. Click browser back button
+
+**Expected Result:**
+- ✓ Returns to dashboard
+- ✓ Still shows Admin role
+- ✓ No role recalculation
+- ✓ State remains consistent
+
+### Security Considerations
+
+1. **localStorage Security:**
+   - User data in localStorage is accessible to JavaScript
+   - No sensitive data (passwords) is stored
+   - Session validation still happens on backend
+   - Invalid sessions are detected and cleared
+
+2. **Backend Validation:**
+   - Every API request validates session cookie
+   - localStorage is only for UI state
+   - Backend is the source of truth for permissions
+   - Tampering with localStorage doesn't grant access
+
+3. **Session Expiration:**
+   - Backend session expires after inactivity
+   - `checkSession()` detects expired sessions
+   - User is logged out automatically
+   - localStorage is cleared on logout
+
+### Benefits
+
+1. **Improved User Experience:**
+   - No role flickering on refresh
+   - Instant dashboard rendering
+   - Consistent role display
+   - Smooth navigation
+
+2. **Better Admin Workflow:**
+   - Edit requests visible in dashboard
+   - Easy approval/rejection process
+   - Clear request information
+   - Centralized request management
+
+3. **Reliability:**
+   - Authentication state persists across refreshes
+   - No unexpected role changes
+   - Predictable behavior
+   - Reduced user confusion
+
+### Conclusion
+
+These fixes address critical usability issues in the task management system. The edit request visibility ensures that task creators can properly manage permission requests, while the authentication state persistence provides a stable and consistent user experience across page refreshes.
+
+**Key Takeaways:**
+- Edit requests are now visible to task creators in the dashboard
+- Authentication state persists across page refreshes using localStorage
+- Role consistency is maintained throughout the user session
+- Backend validation ensures security despite client-side storage
+- User experience is significantly improved with instant state restoration
 
 ---
 

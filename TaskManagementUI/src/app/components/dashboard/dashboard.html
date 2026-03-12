@@ -67,5 +67,44 @@
             </table>
             <p *ngIf="tasks.length === 0" class="no-data">No tasks available</p>
         </div>
+
+        <div class="edit-requests" *ngIf="canCreateTask() && editRequests.length > 0">
+            <h3>Edit Access Requests</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Task Name</th>
+                        <th>Requested By</th>
+                        <th>Message</th>
+                        <th>Request Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr *ngFor="let request of editRequests">
+                        <td>{{ request.taskTitle }}</td>
+                        <td>{{ request.requestedByUserName }}</td>
+                        <td>{{ request.requestMessage }}</td>
+                        <td>{{ request.createdAt | date:'short' }}</td>
+                        <td><span class="badge status-{{ request.status.toLowerCase() }}">{{ request.status }}</span>
+                        </td>
+                        <td>
+                            <button *ngIf="request.status === 'Pending'" (click)="approveEditRequest(request.id)"
+                                class="btn-success btn-sm">
+                                Approve
+                            </button>
+                            <button *ngIf="request.status === 'Pending'" (click)="rejectEditRequest(request.id)"
+                                class="btn-danger btn-sm">
+                                Reject
+                            </button>
+                            <span *ngIf="request.status !== 'Pending'">
+                                {{ request.status }} by {{ request.reviewedByUserName }}
+                            </span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

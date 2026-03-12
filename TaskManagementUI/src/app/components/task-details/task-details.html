@@ -86,6 +86,18 @@
                 <!-- Task creator actions -->
                 <button *ngIf="canEditTask() && !isEditMode" (click)="enableEditMode()" class="btn-primary">Edit
                     Task</button>
+
+                <!-- Request Edit Access Button -->
+                <button *ngIf="canRequestEditAccess()" (click)="openEditRequestDialog()" class="btn-warning">Request
+                    Edit Access</button>
+
+                <!-- Edit Request Status Messages -->
+                <div class="info-message info" *ngIf="hasPendingEditRequest && !canEditTask()">
+                    ⏳ Edit request pending approval
+                </div>
+                <div class="info-message success" *ngIf="hasApprovedEditRequest && !isTaskCompleted()">
+                    ✓ Edit access granted
+                </div>
             </div>
 
             <!-- Completed Task Lock Message -->
@@ -153,6 +165,47 @@
                 <textarea [(ngModel)]="newComment" placeholder="Add a comment..."></textarea>
                 <button (click)="addComment()" [disabled]="!newComment.trim()" class="btn-primary">Add Comment</button>
             </div>
+        </div>
+
+        <!-- Edit Access Requests Section (Only for Task Creator) -->
+        <div class="info-section" *ngIf="canSeeEditRequests()">
+            <h3>Edit Access Requests</h3>
+            <div class="requests-list">
+                <div *ngFor="let request of editRequests" class="request-item">
+                    <div class="request-header">
+                        <strong>{{ request.requestedByUserName }}</strong>
+                        <span class="status-badge" [class]="request.status.toLowerCase()">{{ request.status }}</span>
+                    </div>
+                    <p *ngIf="request.requestMessage">{{ request.requestMessage }}</p>
+                    <small>Requested on {{ request.createdAt | date:'short' }}</small>
+                    <div class="request-actions" *ngIf="request.status === 'Pending'">
+                        <button (click)="approveEditRequest(request.id)" class="btn-success">Approve</button>
+                        <button (click)="rejectEditRequest(request.id)" class="btn-danger">Reject</button>
+                    </div>
+                    <div *ngIf="request.status !== 'Pending' && request.reviewedByUserName">
+                        <small>{{ request.status }} by {{ request.reviewedByUserName }} on {{ request.reviewedAt |
+                            date:'short' }}</small>
+                    </div>
+                </div>
+                <p *ngIf="editRequests.length === 0">No edit requests yet</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Request Dialog -->
+<div class="modal-overlay" *ngIf="showEditRequestDialog" (click)="closeEditRequestDialog()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+        <h3>Request Edit Access</h3>
+        <p>Send a request to the task creator to allow you to edit this task.</p>
+        <div class="form-group">
+            <label>Message (optional):</label>
+            <textarea [(ngModel)]="editRequestMessage" placeholder="Explain why you need edit access..."
+                class="form-control" rows="3"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button (click)="submitEditRequest()" class="btn-primary">Submit Request</button>
+            <button (click)="closeEditRequestDialog()" class="btn-secondary">Cancel</button>
         </div>
     </div>
 </div>

@@ -97,6 +97,7 @@ namespace TaskManagementAPI.Data
         public DbSet<TaskProgressUpdate> TaskProgressUpdates { get; set; }
         public DbSet<TaskAttachment> TaskAttachments { get; set; }
         public DbSet<AttachmentPermissionRequest> AttachmentPermissionRequests { get; set; }
+        public DbSet<TaskEditRequest> TaskEditRequests { get; set; }
 
         /*
          * ========================================================================
@@ -230,6 +231,27 @@ namespace TaskManagementAPI.Data
                 .HasOne(apr => apr.ReviewedByUser)
                 .WithMany()
                 .HasForeignKey(apr => apr.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure TaskEditRequest → Task relationship
+            modelBuilder.Entity<TaskEditRequest>()
+                .HasOne(ter => ter.Task)
+                .WithMany()
+                .HasForeignKey(ter => ter.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure TaskEditRequest → RequestedByUser relationship
+            modelBuilder.Entity<TaskEditRequest>()
+                .HasOne(ter => ter.RequestedByUser)
+                .WithMany()
+                .HasForeignKey(ter => ter.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure TaskEditRequest → ReviewedByUser relationship
+            modelBuilder.Entity<TaskEditRequest>()
+                .HasOne(ter => ter.ReviewedByUser)
+                .WithMany()
+                .HasForeignKey(ter => ter.ReviewedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
     }
