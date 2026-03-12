@@ -109,46 +109,26 @@ namespace TaskManagementAPI.Controllers
                     return Unauthorized(); // 401 status code
                 }
 
-                // Start building LINQ query
-                // Include() performs eager loading to avoid N+1 query problem
-                IQueryable<TaskItem> query = _context.Tasks
+                // ALL TASKS - No filtering, return all tasks in the system
+                // This endpoint is for the "All Tasks" page where everyone sees everything
+                var tasks = await _context.Tasks
                     .Include(t => t.AssignedByUser)  // Load creator user data
-                    .Include(t => t.AssignedToUser); // Load assignee user data
-
-                // Apply role-based filtering using LINQ Where() method
-                if (userRole == "Manager")
-                {
-                    // Manager sees only tasks they created
-                    // LINQ: Where(t => t.AssignedBy == userId.Value)
-                    // SQL: WHERE AssignedBy = @userId
-                    query = query.Where(t => t.AssignedBy == userId.Value);
-                }
-                else if (userRole == "Employee")
-                {
-                    // Employee sees only tasks assigned to them
-                    // LINQ: Where(t => t.AssignedTo == userId.Value)
-                    // SQL: WHERE AssignedTo = @userId
-                    query = query.Where(t => t.AssignedTo == userId.Value);
-                }
-                // Admin: No filter applied, sees all tasks
-
-                // Execute query and project results into TaskDto
-                // Select() transforms TaskItem entities into TaskDto objects
-                var tasks = await query
+                    .Include(t => t.AssignedToUser)  // Load assignee user data
                     .Select(t => new TaskDto
                     {
                         Id = t.Id,
                         Title = t.Title,
                         Description = t.Description,
                         AssignedBy = t.AssignedBy,
-                        AssignedByName = t.AssignedByUser!.Name,  // From included navigation property
+                        AssignedByName = t.AssignedByUser!.Name,
                         AssignedTo = t.AssignedTo,
-                        AssignedToName = t.AssignedToUser!.Name,  // From included navigation property
+                        AssignedToName = t.AssignedToUser!.Name,
                         Priority = t.Priority,
                         Status = t.Status,
                         CreatedAt = t.CreatedAt,
                         StartDate = t.StartDate,
-                        CompletedDate = t.CompletedDate
+                        CompletedDate = t.CompletedDate,
+                        Deadline = t.Deadline
                     })
                     .ToListAsync(); // Execute query asynchronously
 
@@ -265,6 +245,31 @@ namespace TaskManagementAPI.Controllers
                     return Forbid(); // 403 Forbidden
                 }
 
+                // Validate assignment based on role hierarchy
+                var assignedToUser = await _context.Users.FindAsync(createTaskDto.AssignedTo);
+                if (assignedToUser == null)
+                {
+                    return BadRequest(new { message = "Assigned user not found" });
+                }
+
+                // Role-based assignment validation
+                if (userRole == "Admin")
+                {
+                    // Admin can assign to Manager or Employee only
+                    if (assignedToUser.Role != "Manager" && assignedToUser.Role != "Employee")
+                    {
+                        return Forbid(); // 403 - Cannot assign to Admin
+                    }
+                }
+                else if (userRole == "Manager")
+                {
+                    // Manager can only assign to Employee
+                    if (assignedToUser.Role != "Employee")
+                    {
+                        return Forbid(); // 403 - Manager can only assign to Employee
+                    }
+                }
+
                 // Create new TaskItem entity from DTO
                 var task = new TaskItem
                 {
@@ -273,6 +278,7 @@ namespace TaskManagementAPI.Controllers
                     AssignedBy = userId.Value,              // Set from session
                     AssignedTo = createTaskDto.AssignedTo,
                     Priority = createTaskDto.Priority,
+                    Deadline = createTaskDto.Deadline,
                     Status = "Pending",                     // Business rule: new tasks are Pending
                     CreatedAt = DateTime.UtcNow             // Set server timestamp
                 };
@@ -354,17 +360,10 @@ namespace TaskManagementAPI.Controllers
             try
             {
                 var userId = HttpContext.Session.GetInt32("UserId");
-                var userRole = HttpContext.Session.GetString("UserRole");
                 
                 if (userId == null)
                 {
                     return Unauthorized();
-                }
-
-                // STRICT RULE: Only employees can start tasks
-                if (userRole == "Admin" || userRole == "Manager")
-                {
-                    return Forbid(); // 403 - Admin/Manager cannot start tasks
                 }
 
                 // Find task that matches ID AND is assigned to current user
@@ -434,17 +433,10 @@ namespace TaskManagementAPI.Controllers
             try
             {
                 var userId = HttpContext.Session.GetInt32("UserId");
-                var userRole = HttpContext.Session.GetString("UserRole");
                 
                 if (userId == null)
                 {
                     return Unauthorized();
-                }
-
-                // STRICT RULE: Only employees can complete tasks
-                if (userRole == "Admin" || userRole == "Manager")
-                {
-                    return Forbid(); // 403 - Admin/Manager cannot complete tasks
                 }
 
                 // LINQ query with multiple conditions
@@ -672,6 +664,427 @@ namespace TaskManagementAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "An error occurred while retrieving your created tasks", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{id} - GET TASK DETAILS
+        // ========================================================================
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetTaskById(int id)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks
+                    .Include(t => t.AssignedByUser)
+                    .Include(t => t.AssignedToUser)
+                    .Where(t => t.Id == id)
+                    .FirstOrDefaultAsync();
+
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Role-based access control
+                // Admin can view any task
+                // Manager can view any task (for organizational visibility)
+                // Employee can only view tasks assigned to them
+                if (userRole == "Employee" && task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var taskDto = new TaskDto
+                {
+                    Id = task.Id,
+                    Title = task.Title,
+                    Description = task.Description,
+                    AssignedBy = task.AssignedBy,
+                    AssignedByName = task.AssignedByUser!.Name,
+                    AssignedTo = task.AssignedTo,
+                    AssignedToName = task.AssignedToUser!.Name,
+                    Priority = task.Priority,
+                    Status = task.Status,
+                    CreatedAt = task.CreatedAt,
+                    StartDate = task.StartDate,
+                    CompletedDate = task.CompletedDate,
+                    Deadline = task.Deadline
+                };
+
+                return Ok(taskDto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving task details", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/{taskId}/progress - ADD PROGRESS UPDATE
+        // ========================================================================
+        [HttpPost("{taskId}/progress")]
+        public async Task<IActionResult> AddProgressUpdate(int taskId, [FromForm] CreateProgressUpdateDto dto, IFormFile? file)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Only assigned user can add progress
+                if (task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                string? filePath = null;
+                if (file != null)
+                {
+                    var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "tasks");
+                    Directory.CreateDirectory(uploadsFolder);
+                    
+                    var uniqueFileName = $"{Guid.NewGuid()}_{file.FileName}";
+                    filePath = Path.Combine(uploadsFolder, uniqueFileName);
+                    
+                    using (var stream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await file.CopyToAsync(stream);
+                    }
+                    
+                    filePath = $"/uploads/tasks/{uniqueFileName}";
+                }
+
+                var progressUpdate = new TaskProgressUpdate
+                {
+                    TaskId = taskId,
+                    UserId = userId.Value,
+                    Description = dto.Description,
+                    FilePath = filePath,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.TaskProgressUpdates.Add(progressUpdate);
+                await _context.SaveChangesAsync();
+
+                var user = await _context.Users.FindAsync(userId.Value);
+                var result = new TaskProgressUpdateDto
+                {
+                    Id = progressUpdate.Id,
+                    TaskId = progressUpdate.TaskId,
+                    UserId = progressUpdate.UserId,
+                    UserName = user!.Name,
+                    Description = progressUpdate.Description,
+                    FilePath = progressUpdate.FilePath,
+                    CreatedAt = progressUpdate.CreatedAt
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while adding progress update", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/progress - GET PROGRESS UPDATES
+        // ========================================================================
+        [HttpGet("{taskId}/progress")]
+        public async Task<IActionResult> GetProgressUpdates(int taskId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Role-based access control
+                // Admin and Manager can view any task's progress
+                // Employee can only view progress for tasks assigned to them
+                if (userRole == "Employee" && task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var updates = await _context.TaskProgressUpdates
+                    .Include(tpu => tpu.User)
+                    .Where(tpu => tpu.TaskId == taskId)
+                    .OrderByDescending(tpu => tpu.CreatedAt)
+                    .Select(tpu => new TaskProgressUpdateDto
+                    {
+                        Id = tpu.Id,
+                        TaskId = tpu.TaskId,
+                        UserId = tpu.UserId,
+                        UserName = tpu.User!.Name,
+                        Description = tpu.Description,
+                        FilePath = tpu.FilePath,
+                        CreatedAt = tpu.CreatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(updates);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving progress updates", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/{taskId}/attachments - UPLOAD ATTACHMENT
+        // ========================================================================
+        [HttpPost("{taskId}/attachments")]
+        public async Task<IActionResult> UploadAttachment(int taskId, IFormFile file)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                if (file == null || file.Length == 0)
+                {
+                    return BadRequest(new { message = "No file provided" });
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Only assigned user can upload attachments
+                if (task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "tasks");
+                Directory.CreateDirectory(uploadsFolder);
+                
+                var uniqueFileName = $"{Guid.NewGuid()}_{file.FileName}";
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+                
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                var attachment = new TaskAttachment
+                {
+                    TaskId = taskId,
+                    FileName = file.FileName,
+                    FilePath = $"/uploads/tasks/{uniqueFileName}",
+                    UploadedBy = userId.Value,
+                    UploadedAt = DateTime.UtcNow
+                };
+
+                _context.TaskAttachments.Add(attachment);
+                await _context.SaveChangesAsync();
+
+                var user = await _context.Users.FindAsync(userId.Value);
+                var result = new TaskAttachmentDto
+                {
+                    Id = attachment.Id,
+                    TaskId = attachment.TaskId,
+                    FileName = attachment.FileName,
+                    FilePath = attachment.FilePath,
+                    UploadedBy = attachment.UploadedBy,
+                    UploadedByName = user!.Name,
+                    UploadedAt = attachment.UploadedAt
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while uploading attachment", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/attachments - GET ATTACHMENTS
+        // ========================================================================
+        [HttpGet("{taskId}/attachments")]
+        public async Task<IActionResult> GetAttachments(int taskId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Role-based access control
+                // Admin and Manager can view any task's attachments
+                // Employee can only view attachments for tasks assigned to them
+                if (userRole == "Employee" && task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var attachments = await _context.TaskAttachments
+                    .Include(ta => ta.UploadedByUser)
+                    .Where(ta => ta.TaskId == taskId)
+                    .OrderByDescending(ta => ta.UploadedAt)
+                    .Select(ta => new TaskAttachmentDto
+                    {
+                        Id = ta.Id,
+                        TaskId = ta.TaskId,
+                        FileName = ta.FileName,
+                        FilePath = ta.FilePath,
+                        UploadedBy = ta.UploadedBy,
+                        UploadedByName = ta.UploadedByUser!.Name,
+                        UploadedAt = ta.UploadedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(attachments);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving attachments", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // POST /api/task/{taskId}/comments - ADD COMMENT
+        // ========================================================================
+        [HttpPost("{taskId}/comments")]
+        public async Task<IActionResult> AddComment(int taskId, [FromBody] CreateCommentDto dto)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                var comment = new TaskComment
+                {
+                    TaskId = taskId,
+                    UserId = userId.Value,
+                    Comment = dto.Comment,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.TaskComments.Add(comment);
+                await _context.SaveChangesAsync();
+
+                var user = await _context.Users.FindAsync(userId.Value);
+                var result = new TaskCommentDto
+                {
+                    Id = comment.Id,
+                    TaskId = comment.TaskId,
+                    UserId = comment.UserId,
+                    UserName = user!.Name,
+                    Comment = comment.Comment,
+                    CreatedAt = comment.CreatedAt
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while adding comment", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/comments - GET COMMENTS
+        // ========================================================================
+        [HttpGet("{taskId}/comments")]
+        public async Task<IActionResult> GetComments(int taskId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                // Role-based access control
+                // Admin and Manager can view any task's comments
+                // Employee can only view comments for tasks assigned to them
+                if (userRole == "Employee" && task.AssignedTo != userId.Value)
+                {
+                    return Forbid();
+                }
+
+                var comments = await _context.TaskComments
+                    .Include(tc => tc.User)
+                    .Where(tc => tc.TaskId == taskId)
+                    .OrderBy(tc => tc.CreatedAt)
+                    .Select(tc => new TaskCommentDto
+                    {
+                        Id = tc.Id,
+                        TaskId = tc.TaskId,
+                        UserId = tc.UserId,
+                        UserName = tc.User!.Name,
+                        Comment = tc.Comment,
+                        CreatedAt = tc.CreatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(comments);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving comments", error = ex.Message });
             }
         }
     }

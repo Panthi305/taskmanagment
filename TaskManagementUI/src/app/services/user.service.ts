@@ -15,6 +15,10 @@ export class UserService {
         return this.http.get<User[]>(this.apiUrl, { withCredentials: true });
     }
 
+    getAssignableUsers(): Observable<User[]> {
+        return this.http.get<User[]>(`${this.apiUrl}/assignable`, { withCredentials: true });
+    }
+
     createUser(user: CreateUserRequest): Observable<User> {
         return this.http.post<User>(this.apiUrl, user, { withCredentials: true });
     }

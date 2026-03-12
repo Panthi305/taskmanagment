@@ -94,6 +94,8 @@ namespace TaskManagementAPI.Data
         public DbSet<User> Users { get; set; }
         public DbSet<TaskItem> Tasks { get; set; }
         public DbSet<TaskComment> TaskComments { get; set; }
+        public DbSet<TaskProgressUpdate> TaskProgressUpdates { get; set; }
+        public DbSet<TaskAttachment> TaskAttachments { get; set; }
 
         /*
          * ========================================================================
@@ -179,6 +181,34 @@ namespace TaskManagementAPI.Data
                 .WithMany(t => t.Comments)
                 .HasForeignKey(tc => tc.TaskId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure TaskProgressUpdate → Task relationship
+            modelBuilder.Entity<TaskProgressUpdate>()
+                .HasOne(tpu => tpu.Task)
+                .WithMany(t => t.ProgressUpdates)
+                .HasForeignKey(tpu => tpu.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure TaskProgressUpdate → User relationship
+            modelBuilder.Entity<TaskProgressUpdate>()
+                .HasOne(tpu => tpu.User)
+                .WithMany()
+                .HasForeignKey(tpu => tpu.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Configure TaskAttachment → Task relationship
+            modelBuilder.Entity<TaskAttachment>()
+                .HasOne(ta => ta.Task)
+                .WithMany(t => t.Attachments)
+                .HasForeignKey(ta => ta.TaskId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Configure TaskAttachment → User relationship
+            modelBuilder.Entity<TaskAttachment>()
+                .HasOne(ta => ta.UploadedByUser)
+                .WithMany()
+                .HasForeignKey(ta => ta.UploadedBy)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

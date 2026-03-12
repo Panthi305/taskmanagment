@@ -56,6 +56,7 @@ export class CreateTaskComponent implements OnInit {
   description = '';
   assignedTo = 0;
   priority = 'Medium';
+  deadline: string = '';
 
   // Data for dropdown
   users: User[] = [];
@@ -84,21 +85,18 @@ export class CreateTaskComponent implements OnInit {
 
   /*
    * ==========================================================================
-   * LOAD USERS - FETCH AND FILTER EMPLOYEES
+   * LOAD USERS - FETCH ASSIGNABLE USERS BASED ON ROLE
    * ==========================================================================
    * 
-   * ARRAY FILTERING:
-   * ---------------
-   * users.filter(u => u.role === 'Employee')
-   * 
-   * Returns new array containing only users with Employee role.
-   * This filtered list populates the "Assign To" dropdown.
+   * Calls the assignable users endpoint which returns:
+   * - For Admin: Managers and Employees
+   * - For Manager: Employees only
+   * - For Employee: Empty list
    */
   loadUsers(): void {
-    this.userService.getUsers().subscribe({
+    this.userService.getAssignableUsers().subscribe({
       next: (users) => {
-        // Filter to show only employees in dropdown
-        this.users = users.filter(u => u.role === 'Employee');
+        this.users = users;
       },
       error: (error) => {
         this.errorMessage = 'Failed to load users';
@@ -144,7 +142,8 @@ export class CreateTaskComponent implements OnInit {
       title: this.title,
       description: this.description,
       assignedTo: this.assignedTo,
-      priority: this.priority
+      priority: this.priority,
+      deadline: this.deadline ? new Date(this.deadline) : undefined
     }).subscribe({
       next: () => {
         this.successMessage = 'Task created successfully!';

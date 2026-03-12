@@ -46,6 +46,7 @@
                 </div>
             </div>
             <div class="task-actions">
+                <button [routerLink]="['/tasks', task.id]" class="btn-view">View Details</button>
                 <button *ngIf="canStart(task)" (click)="startTask(task.id)" class="btn-start">
                     Start Task
                 </button>

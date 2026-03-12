@@ -12,9 +12,12 @@ namespace TaskManagementAPI.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? StartDate { get; set; }
         public DateTime? CompletedDate { get; set; }
+        public DateTime? Deadline { get; set; }
 
         public User? AssignedByUser { get; set; }
         public User? AssignedToUser { get; set; }
         public ICollection<TaskComment> Comments { get; set; } = new List<TaskComment>();
+        public ICollection<TaskProgressUpdate> ProgressUpdates { get; set; } = new List<TaskProgressUpdate>();
+        public ICollection<TaskAttachment> Attachments { get; set; } = new List<TaskAttachment>();
     }
 }

@@ -108,27 +108,14 @@ export class DashboardComponent implements OnInit {
    * LOAD TASKS - FETCH TASKS FROM API
    * ==========================================================================
    * 
-   * ROLE-BASED DATA LOADING:
-   * ------------------------
-   * - Employee: Calls getMyTasks() - only their assigned tasks
-   * - Admin/Manager: Calls getTasks() - all tasks they can see
-   * 
-   * After loading tasks, calculates statistics for dashboard display.
+   * Loads all tasks for dashboard statistics.
+   * Dashboard shows overview of all tasks in the system.
    */
   loadTasks(): void {
-    if (this.currentUser?.role === 'Employee') {
-      // Employee sees only their tasks
-      this.taskService.getMyTasks().subscribe(tasks => {
-        this.tasks = tasks;
-        this.calculateStats();
-      });
-    } else {
-      // Admin/Manager see filtered tasks
-      this.taskService.getTasks().subscribe(tasks => {
-        this.tasks = tasks;
-        this.calculateStats();
-      });
-    }
+    this.taskService.getTasks().subscribe(tasks => {
+      this.tasks = tasks;
+      this.calculateStats();
+    });
   }
 
   /*
@@ -181,5 +168,9 @@ export class DashboardComponent implements OnInit {
    */
   canCreateTask(): boolean {
     return this.currentUser?.role === 'Admin' || this.currentUser?.role === 'Manager';
+  }
+
+  isAdmin(): boolean {
+    return this.currentUser?.role === 'Admin';
   }
 }

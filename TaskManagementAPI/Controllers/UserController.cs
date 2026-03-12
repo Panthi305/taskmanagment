@@ -20,13 +20,33 @@ namespace TaskManagementAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
+            var userId = HttpContext.Session.GetInt32("UserId");
             var userRole = HttpContext.Session.GetString("UserRole");
+            
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
             if (userRole != "Admin" && userRole != "Manager")
             {
                 return Forbid();
             }
 
-            var users = await _context.Users
+            IQueryable<User> query = _context.Users;
+
+            // Admin can see all users (Manager and Employee)
+            // Manager can only see Employees
+            if (userRole == "Manager")
+            {
+                query = query.Where(u => u.Role == "Employee");
+            }
+            else if (userRole == "Admin")
+            {
+                query = query.Where(u => u.Role == "Manager" || u.Role == "Employee");
+            }
+
+            var users = await query
                 .Select(u => new UserDto
                 {
                     Id = u.Id,
@@ -35,6 +55,58 @@ namespace TaskManagementAPI.Controllers
                     Role = u.Role,
                     CreatedAt = u.CreatedAt
                 })
+                .ToListAsync();
+
+            return Ok(users);
+        }
+
+        [HttpGet("assignable")]
+        public async Task<IActionResult> GetAssignableUsers()
+        {
+            var userId = HttpContext.Session.GetInt32("UserId");
+            var userRole = HttpContext.Session.GetString("UserRole");
+            
+            if (userId == null)
+            {
+                return Unauthorized();
+            }
+
+            // Only Admin and Manager can assign tasks
+            if (userRole != "Admin" && userRole != "Manager")
+            {
+                return Forbid();
+            }
+
+            IQueryable<User> query = _context.Users;
+
+            // Role-based filtering for assignable users
+            if (userRole == "Admin")
+            {
+                // Admin can assign to Manager or Employee
+                query = query.Where(u => u.Role == "Manager" || u.Role == "Employee");
+            }
+            else if (userRole == "Manager")
+            {
+                // Manager can only assign to Employee
+                query = query.Where(u => u.Role == "Employee");
+            }
+            else
+            {
+                // Employee cannot assign tasks - return empty list
+                return Ok(new List<UserDto>());
+            }
+
+            var users = await query
+                .Select(u => new UserDto
+                {
+                    Id = u.Id,
+                    Name = u.Name,
+                    Email = u.Email,
+                    Role = u.Role,
+                    CreatedAt = u.CreatedAt
+                })
+                .OrderBy(u => u.Role)
+                .ThenBy(u => u.Name)
                 .ToListAsync();
 
             return Ok(users);

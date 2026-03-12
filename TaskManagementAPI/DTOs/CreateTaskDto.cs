@@ -6,5 +6,6 @@ namespace TaskManagementAPI.DTOs
         public string Description { get; set; } = string.Empty;
         public int AssignedTo { get; set; }
         public string Priority { get; set; } = "Medium";
+        public DateTime? Deadline { get; set; }
     }
 }

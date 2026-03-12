@@ -136,4 +136,59 @@ export class TaskService {
     completeTask(id: number): Observable<any> {
         return this.http.put(`${this.apiUrl}/complete/${id}`, {}, { withCredentials: true });
     }
+
+    /*
+     * ========================================================================
+     * GET TASK BY ID - RETRIEVE TASK DETAILS
+     * ========================================================================
+     */
+    getTaskById(id: number): Observable<Task> {
+        return this.http.get<Task>(`${this.apiUrl}/${id}`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * PROGRESS UPDATES
+     * ========================================================================
+     */
+    addProgressUpdate(taskId: number, description: string, file?: File): Observable<any> {
+        const formData = new FormData();
+        formData.append('description', description);
+        if (file) {
+            formData.append('file', file);
+        }
+        return this.http.post(`${this.apiUrl}/${taskId}/progress`, formData, { withCredentials: true });
+    }
+
+    getProgressUpdates(taskId: number): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/${taskId}/progress`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * ATTACHMENTS
+     * ========================================================================
+     */
+    uploadAttachment(taskId: number, file: File): Observable<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.http.post(`${this.apiUrl}/${taskId}/attachments`, formData, { withCredentials: true });
+    }
+
+    getAttachments(taskId: number): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/${taskId}/attachments`, { withCredentials: true });
+    }
+
+    /*
+     * ========================================================================
+     * COMMENTS
+     * ========================================================================
+     */
+    addComment(taskId: number, comment: string): Observable<any> {
+        return this.http.post(`${this.apiUrl}/${taskId}/comments`, { comment }, { withCredentials: true });
+    }
+
+    getComments(taskId: number): Observable<any[]> {
+        return this.http.get<any[]>(`${this.apiUrl}/${taskId}/comments`, { withCredentials: true });
+    }
 }

@@ -14,5 +14,6 @@ namespace TaskManagementAPI.DTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? CompletedDate { get; set; }
+        public DateTime? Deadline { get; set; }
     }
 }

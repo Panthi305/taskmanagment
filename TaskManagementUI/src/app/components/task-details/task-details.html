@@ -1,0 +1,114 @@
+<div class="task-details-container" *ngIf="!loading">
+    <div class="header">
+        <button class="back-btn" (click)="goBack()">← Back</button>
+        <h2>Task Details</h2>
+    </div>
+
+    <div class="error" *ngIf="error">{{ error }}</div>
+
+    <div class="task-info" *ngIf="task">
+        <div class="info-section">
+            <h3>Task Information</h3>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Title:</label>
+                    <span>{{ task.title }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Description:</label>
+                    <span>{{ task.description }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Priority:</label>
+                    <span class="priority-badge" [class]="task.priority.toLowerCase()">{{ task.priority }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Status:</label>
+                    <span class="status-badge" [class]="task.status.toLowerCase().replace(' ', '-')">{{ task.status
+                        }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Assigned To:</label>
+                    <span>{{ task.assignedToName }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Assigned By:</label>
+                    <span>{{ task.assignedByName }}</span>
+                </div>
+                <div class="info-item">
+                    <label>Created:</label>
+                    <span>{{ task.createdAt | date:'short' }}</span>
+                </div>
+                <div class="info-item" *ngIf="task.deadline">
+                    <label>Deadline:</label>
+                    <span>{{ task.deadline | date:'short' }}</span>
+                </div>
+            </div>
+
+            <div class="task-actions" *ngIf="canModifyTask()">
+                <button *ngIf="task.status === 'Pending'" (click)="startTask()" class="btn-primary">Start Task</button>
+                <button *ngIf="task.status === 'In Progress'" (click)="completeTask()" class="btn-success">Complete
+                    Task</button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h3>Attachments</h3>
+            <div class="attachments-list">
+                <div *ngFor="let attachment of attachments" class="attachment-item">
+                    <span>{{ attachment.fileName }}</span>
+                    <small>Uploaded by {{ attachment.uploadedByName }} on {{ attachment.uploadedAt | date:'short'
+                        }}</small>
+                </div>
+                <p *ngIf="attachments.length === 0">No attachments yet</p>
+            </div>
+            <div class="upload-form" *ngIf="canModifyTask()">
+                <input type="file" (change)="onAttachmentFileSelected($event)" />
+                <button (click)="uploadAttachment()" [disabled]="!selectedAttachmentFile"
+                    class="btn-primary">Upload</button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h3>Progress Updates</h3>
+            <div class="progress-list">
+                <div *ngFor="let update of progressUpdates" class="progress-item">
+                    <div class="progress-header">
+                        <strong>{{ update.userName }}</strong>
+                        <small>{{ update.createdAt | date:'short' }}</small>
+                    </div>
+                    <p>{{ update.description }}</p>
+                    <a *ngIf="update.filePath" [href]="'http://localhost:5150' + update.filePath" target="_blank">View
+                        File</a>
+                </div>
+                <p *ngIf="progressUpdates.length === 0">No progress updates yet</p>
+            </div>
+            <div class="progress-form" *ngIf="canModifyTask()">
+                <textarea [(ngModel)]="newProgressDescription" placeholder="Add progress update..."></textarea>
+                <input type="file" (change)="onProgressFileSelected($event)" />
+                <button (click)="addProgressUpdate()" [disabled]="!newProgressDescription.trim()"
+                    class="btn-primary">Add Update</button>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <h3>Comments</h3>
+            <div class="comments-list">
+                <div *ngFor="let comment of comments" class="comment-item">
+                    <div class="comment-header">
+                        <strong>{{ comment.userName }}</strong>
+                        <small>{{ comment.createdAt | date:'short' }}</small>
+                    </div>
+                    <p>{{ comment.comment }}</p>
+                </div>
+                <p *ngIf="comments.length === 0">No comments yet</p>
+            </div>
+            <div class="comment-form">
+                <textarea [(ngModel)]="newComment" placeholder="Add a comment..."></textarea>
+                <button (click)="addComment()" [disabled]="!newComment.trim()" class="btn-primary">Add Comment</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="loading" *ngIf="loading">Loading...</div>

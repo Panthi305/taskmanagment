@@ -203,6 +203,9 @@ if (app.Environment.IsDevelopment())
 // Apply CORS policy (must be before other middleware that handles requests)
 app.UseCors("AllowAngular");
 
+// Enable static file serving for uploaded files
+app.UseStaticFiles();
+
 // Enable session middleware (loads session data from cookie)
 app.UseSession();
 

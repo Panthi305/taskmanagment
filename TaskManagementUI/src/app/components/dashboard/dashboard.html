@@ -33,7 +33,7 @@
             <button *ngIf="canCreateTask()" routerLink="/create-task" class="btn-primary">
                 Create New Task
             </button>
-            <button routerLink="/my-tasks" class="btn-secondary">
+            <button *ngIf="!isAdmin()" routerLink="/my-tasks" class="btn-secondary">
                 My Tasks
             </button>
             <button routerLink="/tasks" class="btn-secondary">

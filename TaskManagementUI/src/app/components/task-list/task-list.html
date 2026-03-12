@@ -26,6 +26,7 @@
                     <th>Priority</th>
                     <th>Status</th>
                     <th>Created</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -39,6 +40,9 @@
                     <td><span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">{{ task.status
                             }}</span></td>
                     <td>{{ task.createdAt | date:'short' }}</td>
+                    <td>
+                        <button [routerLink]="['/tasks', task.id]" class="btn-view">View</button>
+                    </td>
                 </tr>
             </tbody>
         </table>
