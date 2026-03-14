@@ -5,6 +5,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TaskService } from '../../services/task.service';
 import { AuthService } from '../../services/auth.service';
 import { Task, TaskComment, TaskProgressUpdate, TaskAttachment } from '../../models/task';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 @Component({
     selector: 'app-task-details',
@@ -34,6 +36,7 @@ export class TaskDetailsComponent implements OnInit {
     editRequests: any[] = [];
     hasApprovedEditRequest: boolean = false;
     hasPendingEditRequest: boolean = false;
+    hasRejectedEditRequest: boolean = false;
 
     currentUserId: number = 0;
     currentUserRole: string = '';
@@ -56,30 +59,61 @@ export class TaskDetailsComponent implements OnInit {
             this.currentUserRole = user.role;
         }
 
-        const taskId = Number(this.route.snapshot.paramMap.get('id'));
-        if (taskId) {
+        this.route.paramMap.subscribe(params => {
+            const rawId = params.get('id');
+            const taskId = rawId ? Number(rawId) : NaN;
+
+            if (!rawId || Number.isNaN(taskId) || taskId <= 0) {
+                this.error = 'Invalid task id.';
+                this.loading = false;
+                return;
+            }
+
             this.loadTaskDetails(taskId);
-        }
+        });
     }
 
     loadTaskDetails(taskId: number): void {
         this.loading = true;
         this.error = '';
 
+        // Fetch task first, then fetch edit request status in parallel with other data
         this.taskService.getTaskById(taskId).subscribe({
             next: (task) => {
                 this.task = task;
-                this.loadComments(taskId);
-                this.loadProgressUpdates(taskId);
-                this.loadAttachments(taskId);
-                this.checkEditRequestStatus(taskId);
-                if (this.canSeeEditRequests()) {
-                    this.loadEditRequests(taskId);
-                }
-                this.loading = false;
+
+                const isCreator = task.assignedBy === this.currentUserId;
+
+                // Build parallel requests — always fetch edit requests for non-creators
+                const editRequests$ = isCreator
+                    ? this.taskService.getEditRequests(taskId).pipe(catchError(() => of([])))
+                    : this.taskService.getEditRequests(taskId).pipe(catchError(() => of([])));
+
+                forkJoin({
+                    comments: this.taskService.getComments(taskId).pipe(catchError(() => of([]))),
+                    progress: this.taskService.getProgressUpdates(taskId).pipe(catchError(() => of([]))),
+                    attachments: this.taskService.getAttachments(taskId).pipe(catchError(() => of([]))),
+                    editRequests: editRequests$
+                }).subscribe(results => {
+                    this.comments = results.comments;
+                    this.progressUpdates = results.progress;
+                    this.attachments = results.attachments;
+
+                    if (isCreator) {
+                        // Creator sees all requests in the section
+                        this.editRequests = results.editRequests;
+                    } else {
+                        // Non-creator: set their own request status flags
+                        const myRequest = results.editRequests[0] ?? null;
+                        this.hasApprovedEditRequest = myRequest?.status === 'Approved';
+                        this.hasPendingEditRequest = myRequest?.status === 'Pending';
+                        this.hasRejectedEditRequest = myRequest?.status === 'Rejected';
+                    }
+
+                    this.loading = false;
+                });
             },
-            error: (err) => {
-                console.error('Failed to load task details', err);
+            error: () => {
                 this.error = 'Task details could not be loaded. The task may not exist or you may not have permission to view it.';
                 this.loading = false;
             }
@@ -324,6 +358,11 @@ export class TaskDetailsComponent implements OnInit {
             return false;
         }
 
+        // Cannot request if already rejected
+        if (this.hasRejectedEditRequest) {
+            return false;
+        }
+
         return true;
     }
 
@@ -335,22 +374,28 @@ export class TaskDetailsComponent implements OnInit {
     }
 
     checkEditRequestStatus(taskId: number): void {
-        // This is called for non-creators to check their own request status
+        // Skip if user is the task creator — they can always edit
         if (!this.task || this.task.assignedBy === this.currentUserId) {
             return;
         }
 
+        // Reset flags before checking
+        this.hasApprovedEditRequest = false;
+        this.hasPendingEditRequest = false;
+        this.hasRejectedEditRequest = false;
+
         this.taskService.getEditRequests(taskId).subscribe({
             next: (requests) => {
-                const myRequest = requests.find(r => r.requestedByUserId === this.currentUserId);
-                if (myRequest) {
+                // Backend returns only this user's own request(s)
+                if (requests && requests.length > 0) {
+                    const myRequest = requests[0]; // Only one request per user per task
                     this.hasApprovedEditRequest = myRequest.status === 'Approved';
                     this.hasPendingEditRequest = myRequest.status === 'Pending';
+                    this.hasRejectedEditRequest = myRequest.status === 'Rejected';
                 }
             },
-            error: (err) => {
-                // User might not have permission to view all requests, that's okay
-                console.log('Could not check edit request status');
+            error: () => {
+                // Silently fail — user simply has no edit access
             }
         });
     }
@@ -381,9 +426,9 @@ export class TaskDetailsComponent implements OnInit {
 
         this.taskService.createEditRequest(this.task.id, this.editRequestMessage).subscribe({
             next: () => {
-                alert('Edit request submitted successfully');
                 this.closeEditRequestDialog();
-                this.hasPendingEditRequest = true;
+                // Reload status from server to reflect the new pending state
+                this.checkEditRequestStatus(this.task!.id);
             },
             error: (err) => {
                 alert('Failed to submit edit request: ' + (err.error?.message || 'Unknown error'));
@@ -394,7 +439,6 @@ export class TaskDetailsComponent implements OnInit {
     approveEditRequest(requestId: number): void {
         this.taskService.approveEditRequest(requestId).subscribe({
             next: () => {
-                alert('Edit request approved');
                 if (this.task) {
                     this.loadEditRequests(this.task.id);
                 }
@@ -408,7 +452,6 @@ export class TaskDetailsComponent implements OnInit {
     rejectEditRequest(requestId: number): void {
         this.taskService.rejectEditRequest(requestId).subscribe({
             next: () => {
-                alert('Edit request rejected');
                 if (this.task) {
                     this.loadEditRequests(this.task.id);
                 }

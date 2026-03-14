@@ -24,7 +24,8 @@
 21. [Demo Credentials](#demo-credentials)
 22. [Completed Task Lock Rule](#completed-task-lock-rule)
 23. [Edit Request Visibility and Authentication State Fix](#edit-request-visibility-and-authentication-state-fix)
-24. [Future Enhancements](#future-enhancements)
+24. [Edit Access Permission Enforcement](#edit-access-permission-enforcement)
+25. [Future Enhancements](#future-enhancements)
 
 ---
 
@@ -5249,6 +5250,519 @@ These fixes address critical usability issues in the task management system. The
 - Role consistency is maintained throughout the user session
 - Backend validation ensures security despite client-side storage
 - User experience is significantly improved with instant state restoration
+
+---
+
+## Edit Access Permission Enforcement
+
+### Overview
+The Edit Access Request system allows non-creator users to request permission to edit tasks. Once a request is approved or rejected, the system must enforce the correct permission behavior. This section documents how approved and rejected edit requests affect task editing permissions.
+
+### Permission Logic
+
+Only two types of users can edit a task:
+1. The task creator (user who created the task via `Task.AssignedBy`)
+2. A user whose edit request has been APPROVED for that specific task
+
+All other users are blocked from editing, including:
+- Users with pending edit requests
+- Users with rejected edit requests
+- Users who haven't requested edit access
+- Admin users (unless they created the task)
+
+### Database Schema
+
+The `TaskEditRequests` table stores edit access requests:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| Id | int | Primary key |
+| TaskId | int | Foreign key to Tasks |
+| RequestedByUserId | int | User requesting edit access |
+| RequestMessage | string | Reason for request |
+| Status | string | Pending / Approved / Rejected |
+| CreatedAt | datetime | Request timestamp |
+| ReviewedByUserId | int? | User who reviewed |
+| ReviewedAt | datetime? | Review timestamp |
+
+**Key Relationships:**
+- Task → TaskEditRequests (One-to-Many, Cascade Delete)
+- User → TaskEditRequests (RequestedBy, Restrict Delete)
+- User → TaskEditRequests (ReviewedBy, Restrict Delete)
+
+### Backend Implementation
+
+#### Edit Task Validation
+
+The `UpdateTask` endpoint enforces edit permissions:
+
+```csharp
+[HttpPut("{id}")]
+public async Task<IActionResult> UpdateTask(int id, [FromBody] UpdateTaskDto updateTaskDto)
+{
+    var userId = HttpContext.Session.GetInt32("UserId");
+    var task = await _context.Tasks.FindAsync(id);
+
+    // COMPLETED TASK LOCK RULE: No one can modify completed tasks
+    if (task.Status == "Completed")
+    {
+        return StatusCode(403, new { message = "This task is completed and cannot be modified." });
+    }
+
+    // Check if user can edit: either task creator OR has approved edit request
+    bool isCreator = task.AssignedBy == userId.Value;
+    bool hasApprovedEditRequest = false;
+
+    if (!isCreator)
+    {
+        // Check if there's an approved edit request for this user
+        hasApprovedEditRequest = await _context.TaskEditRequests
+            .AnyAsync(ter => ter.TaskId == id && 
+                           ter.RequestedByUserId == userId.Value && 
+                           ter.Status == "Approved");
+    }
+
+    if (!isCreator && !hasApprovedEditRequest)
+    {
+        return StatusCode(403, new { message = "Only the task creator or users with approved edit access can edit this task" });
+    }
+
+    // Proceed with update...
+}
+```
+
+**Validation Flow:**
+1. Check if task is completed (blocked for everyone)
+2. Check if user is task creator (allowed)
+3. If not creator, check for approved edit request
+4. If no approved request, return 403 Forbidden
+
+#### Duplicate Request Prevention
+
+The `CreateEditRequest` endpoint prevents duplicate requests:
+
+```csharp
+[HttpPost("{taskId}/edit-request")]
+public async Task<IActionResult> CreateEditRequest(int taskId, [FromBody] CreateTaskEditRequestDto dto)
+{
+    var userId = HttpContext.Session.GetInt32("UserId");
+    var task = await _context.Tasks.FindAsync(taskId);
+
+    // Cannot request edit access if you're the creator
+    if (task.AssignedBy == userId.Value)
+    {
+        return BadRequest(new { message = "You are the task creator and can already edit this task" });
+    }
+
+    // Check if there's already any request (pending, approved, or rejected)
+    var existingRequest = await _context.TaskEditRequests
+        .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value)
+        .FirstOrDefaultAsync();
+
+    if (existingRequest != null)
+    {
+        if (existingRequest.Status == "Pending")
+        {
+            return BadRequest(new { message = "You already have a pending edit request for this task" });
+        }
+        else if (existingRequest.Status == "Approved")
+        {
+            return BadRequest(new { message = "You already have approved edit access for this task" });
+        }
+        else if (existingRequest.Status == "Rejected")
+        {
+            return BadRequest(new { message = "Your previous edit request was rejected. Please contact the task creator." });
+        }
+    }
+
+    // Create new request...
+}
+```
+
+**Duplicate Prevention Logic:**
+- Only one request per user per task is allowed
+- Checks for existing requests regardless of status
+- Provides specific error messages for each status
+- Rejected requests cannot be resubmitted automatically
+
+### Frontend Implementation
+
+#### TypeScript Component Logic
+
+The `TaskDetailsComponent` manages edit request state:
+
+```typescript
+export class TaskDetailsComponent implements OnInit {
+    hasApprovedEditRequest: boolean = false;
+    hasPendingEditRequest: boolean = false;
+    hasRejectedEditRequest: boolean = false;
+
+    // Check if user can edit task
+    canEditTask(): boolean {
+        if (!this.task) return false;
+
+        // COMPLETED TASK LOCK RULE: No one can edit completed tasks
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Task creator can always edit
+        if (this.task.assignedBy === this.currentUserId) {
+            return true;
+        }
+
+        // User with approved edit request can edit
+        return this.hasApprovedEditRequest;
+    }
+
+    // Check if user can request edit access
+    canRequestEditAccess(): boolean {
+        if (!this.task) return false;
+
+        // Cannot request if you're the creator
+        if (this.task.assignedBy === this.currentUserId) {
+            return false;
+        }
+
+        // Cannot request if task is completed
+        if (this.task.status === 'Completed') {
+            return false;
+        }
+
+        // Cannot request if already approved
+        if (this.hasApprovedEditRequest) {
+            return false;
+        }
+
+        // Cannot request if already pending
+        if (this.hasPendingEditRequest) {
+            return false;
+        }
+
+        // Cannot request if already rejected
+        if (this.hasRejectedEditRequest) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // Check edit request status for current user
+    checkEditRequestStatus(taskId: number): void {
+        if (!this.task || this.task.assignedBy === this.currentUserId) {
+            return;
+        }
+
+        this.taskService.getEditRequests(taskId).subscribe({
+            next: (requests) => {
+                const myRequest = requests.find(r => r.requestedByUserId === this.currentUserId);
+                if (myRequest) {
+                    this.hasApprovedEditRequest = myRequest.status === 'Approved';
+                    this.hasPendingEditRequest = myRequest.status === 'Pending';
+                    this.hasRejectedEditRequest = myRequest.status === 'Rejected';
+                }
+            }
+        });
+    }
+}
+```
+
+#### HTML Template
+
+The UI displays different elements based on edit request status:
+
+```html
+<!-- Edit Task Button (only for creator or approved users) -->
+<button *ngIf="canEditTask() && !isEditMode" 
+        (click)="enableEditMode()" 
+        class="btn-primary">
+    Edit Task
+</button>
+
+<!-- Request Edit Access Button (only if no request exists) -->
+<button *ngIf="canRequestEditAccess()" 
+        (click)="openEditRequestDialog()" 
+        class="btn-warning">
+    Request Edit Access
+</button>
+
+<!-- Edit Request Status Messages -->
+<div class="info-message info" *ngIf="hasPendingEditRequest && !canEditTask()">
+    ⏳ Edit request pending approval
+</div>
+
+<div class="info-message success" *ngIf="hasApprovedEditRequest && !isTaskCompleted()">
+    ✓ Edit access granted
+</div>
+
+<div class="info-message error" *ngIf="hasRejectedEditRequest && !canEditTask()">
+    ✗ Edit request rejected
+</div>
+```
+
+### Permission States
+
+#### State 1: No Request
+**User:** Non-creator who hasn't requested edit access
+**UI Display:**
+- "Request Edit Access" button visible
+- No status messages
+- "Edit Task" button hidden
+
+**Backend Behavior:**
+- Edit attempts return 403 Forbidden
+- Can create new edit request
+
+#### State 2: Pending Request
+**User:** Non-creator with pending edit request
+**UI Display:**
+- "Request Edit Access" button hidden
+- Message: "⏳ Edit request pending approval"
+- "Edit Task" button hidden
+
+**Backend Behavior:**
+- Edit attempts return 403 Forbidden
+- Cannot create duplicate request
+
+#### State 3: Approved Request
+**User:** Non-creator with approved edit request
+**UI Display:**
+- "Request Edit Access" button hidden
+- Message: "✓ Edit access granted"
+- "Edit Task" button visible
+
+**Backend Behavior:**
+- Edit attempts succeed
+- Cannot create duplicate request
+
+#### State 4: Rejected Request
+**User:** Non-creator with rejected edit request
+**UI Display:**
+- "Request Edit Access" button hidden
+- Message: "✗ Edit request rejected"
+- "Edit Task" button hidden
+
+**Backend Behavior:**
+- Edit attempts return 403 Forbidden
+- Cannot create duplicate request
+- Must contact task creator for reconsideration
+
+#### State 5: Task Creator
+**User:** Task creator
+**UI Display:**
+- "Request Edit Access" button hidden
+- No status messages
+- "Edit Task" button visible
+
+**Backend Behavior:**
+- Edit attempts always succeed (unless task is completed)
+- Cannot create edit request for own task
+
+### Approval/Rejection Workflow
+
+#### Approval Process
+1. Task creator views edit requests in dashboard or task details
+2. Creator clicks "Approve" button
+3. Backend updates request status to "Approved"
+4. Backend sets ReviewedByUserId and ReviewedAt
+5. Requester can now edit the task
+6. Approval persists across page refreshes
+
+#### Rejection Process
+1. Task creator views edit requests
+2. Creator clicks "Reject" button
+3. Backend updates request status to "Rejected"
+4. Backend sets ReviewedByUserId and ReviewedAt
+5. Requester cannot edit the task
+6. Requester cannot resubmit request
+7. Rejection persists across page refreshes
+
+### Database Persistence
+
+**Request Status Storage:**
+- Status is stored in `TaskEditRequests.Status` column
+- Values: "Pending", "Approved", "Rejected"
+- Status persists permanently in database
+- Page refresh does not reset approval/rejection
+
+**Query for Approved Access:**
+```csharp
+var hasApprovedAccess = await _context.TaskEditRequests
+    .AnyAsync(ter => ter.TaskId == taskId && 
+                   ter.RequestedByUserId == userId && 
+                   ter.Status == "Approved");
+```
+
+### Security Considerations
+
+1. **Backend Validation:**
+   - All edit permissions enforced server-side
+   - Frontend UI is for user experience only
+   - Tampering with frontend doesn't grant access
+
+2. **Database Integrity:**
+   - Foreign key constraints prevent orphaned requests
+   - Cascade delete removes requests when task is deleted
+   - Restrict delete prevents user deletion if they have requests
+
+3. **Status Immutability:**
+   - Once approved/rejected, status cannot be changed by requester
+   - Only task creator can review requests
+   - No automatic status changes
+
+4. **Duplicate Prevention:**
+   - One request per user per task
+   - Prevents request spam
+   - Clear error messages for each scenario
+
+### Test Cases
+
+#### Test Case 1: Employee Requests Edit Access
+**Steps:**
+1. Login as Employee
+2. Navigate to task created by Admin
+3. Click "Request Edit Access"
+4. Enter message and submit
+
+**Expected Result:**
+- ✓ Request created with Status="Pending"
+- ✓ Message: "⏳ Edit request pending approval"
+- ✓ "Request Edit Access" button hidden
+- ✓ "Edit Task" button hidden
+
+#### Test Case 2: Admin Approves Request
+**Steps:**
+1. Login as Admin (task creator)
+2. View dashboard or task details
+3. See pending edit request
+4. Click "Approve"
+
+**Expected Result:**
+- ✓ Request status changes to "Approved"
+- ✓ ReviewedBy and ReviewedAt fields populated
+- ✓ Employee can now edit task
+
+#### Test Case 3: Approved User Can Edit
+**Steps:**
+1. Login as Employee (with approved request)
+2. Navigate to task
+3. Click "Edit Task"
+4. Modify task details
+5. Save changes
+
+**Expected Result:**
+- ✓ Message: "✓ Edit access granted"
+- ✓ "Edit Task" button visible
+- ✓ Edit form opens
+- ✓ Changes save successfully
+- ✓ HTTP 200 OK response
+
+#### Test Case 4: Admin Rejects Request
+**Steps:**
+1. Login as Admin (task creator)
+2. View pending edit request
+3. Click "Reject"
+
+**Expected Result:**
+- ✓ Request status changes to "Rejected"
+- ✓ ReviewedBy and ReviewedAt fields populated
+- ✓ Employee cannot edit task
+
+#### Test Case 5: Rejected User Cannot Edit
+**Steps:**
+1. Login as Employee (with rejected request)
+2. Navigate to task
+3. Look for "Edit Task" button
+
+**Expected Result:**
+- ✓ Message: "✗ Edit request rejected"
+- ✓ "Edit Task" button hidden
+- ✓ "Request Edit Access" button hidden
+- ✓ Manual API call returns 403 Forbidden
+
+#### Test Case 6: Refresh Keeps Approval State
+**Steps:**
+1. Login as Employee (with approved request)
+2. Navigate to task
+3. Verify "Edit Task" button visible
+4. Refresh page (F5)
+
+**Expected Result:**
+- ✓ "Edit Task" button still visible
+- ✓ Message: "✓ Edit access granted"
+- ✓ Can still edit task
+- ✓ Approval persists from database
+
+#### Test Case 7: Duplicate Request Prevention
+**Steps:**
+1. Login as Employee
+2. Request edit access for task
+3. Try to request again
+
+**Expected Result:**
+- ✗ Second request fails
+- ✗ Error: "You already have a pending edit request for this task"
+- ✗ No duplicate request created
+
+#### Test Case 8: Rejected Request Cannot Resubmit
+**Steps:**
+1. Login as Employee (with rejected request)
+2. Try to request edit access again
+
+**Expected Result:**
+- ✗ Request button hidden
+- ✗ API call returns error
+- ✗ Error: "Your previous edit request was rejected. Please contact the task creator."
+
+#### Test Case 9: Other Users Cannot Edit
+**Steps:**
+1. Login as Employee A
+2. Admin approves edit request for Employee B
+3. Employee A tries to edit task
+
+**Expected Result:**
+- ✗ Employee A cannot see "Edit Task" button
+- ✗ Manual API call returns 403 Forbidden
+- ✗ Only Employee B has edit access
+
+### Benefits
+
+1. **Clear Permission Model:**
+   - Only creator and approved users can edit
+   - No ambiguity about who can edit
+   - Easy to understand and enforce
+
+2. **Controlled Access:**
+   - Task creators maintain control
+   - Explicit approval required
+   - Can reject inappropriate requests
+
+3. **Persistent State:**
+   - Approvals survive page refreshes
+   - Database is source of truth
+   - Consistent behavior across sessions
+
+4. **Duplicate Prevention:**
+   - One request per user per task
+   - Prevents request spam
+   - Clear feedback for each state
+
+5. **Security:**
+   - Backend validation enforces rules
+   - Frontend cannot bypass permissions
+   - Database constraints ensure integrity
+
+### Conclusion
+
+The Edit Access Permission Enforcement system provides a robust and secure way to manage task editing permissions. By storing approval state in the database and validating on every edit attempt, the system ensures that only authorized users can modify tasks while maintaining a clear and user-friendly interface.
+
+**Key Takeaways:**
+- Only task creators and approved users can edit tasks
+- Rejected requests cannot be resubmitted automatically
+- Approval state persists across page refreshes
+- Backend validation ensures security
+- One request per user per task prevents duplicates
+- Clear UI feedback for all permission states
 
 ---
 

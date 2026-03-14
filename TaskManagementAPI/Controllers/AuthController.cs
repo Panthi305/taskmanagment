@@ -111,6 +111,7 @@ namespace TaskManagementAPI.Controllers
                 HttpContext.Session.SetInt32("UserId", user.Id);
                 HttpContext.Session.SetString("UserRole", user.Role);
                 HttpContext.Session.SetString("UserName", user.Name);
+                HttpContext.Session.SetString("UserEmail", user.Email);
 
                 // Return user data (excluding sensitive information like password)
                 return Ok(new
@@ -166,7 +167,7 @@ namespace TaskManagementAPI.Controllers
          * - Restore user state after page refresh
          * - Verify session hasn't expired
          * 
-         * If session is invalid or expired, returns 401 Unauthorized.
+         * If session is invalid or expired, returns 200 with authenticated=false.
          */
         [HttpGet("session")]
         public IActionResult GetSession()
@@ -179,14 +180,17 @@ namespace TaskManagementAPI.Controllers
                 if (userId == null)
                 {
                     // Session doesn't exist or has expired
-                    return Unauthorized(new { message = "Not authenticated" });
+                    // Return 200 so the client doesn't log a failed resource load on first visit.
+                    return Ok(new { authenticated = false });
                 }
 
                 // Session is valid, return user information
                 return Ok(new
                 {
+                    authenticated = true,
                     id = userId,
                     name = HttpContext.Session.GetString("UserName"),
+                    email = HttpContext.Session.GetString("UserEmail"),
                     role = HttpContext.Session.GetString("UserRole")
                 });
             }

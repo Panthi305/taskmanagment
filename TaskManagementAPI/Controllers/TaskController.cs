@@ -694,14 +694,8 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
-                // Role-based access control
-                // Admin can view any task
-                // Manager can view any task (for organizational visibility)
-                // Employee can only view tasks assigned to them
-                if (userRole == "Employee" && task.AssignedTo != userId.Value)
-                {
-                    return Forbid();
-                }
+                // All authenticated users can view task details
+                // (The task list already shows all tasks to everyone)
 
                 var taskDto = new TaskDto
                 {
@@ -957,14 +951,6 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
-                // Role-based access control
-                // Admin and Manager can view any task's progress
-                // Employee can only view progress for tasks assigned to them
-                if (userRole == "Employee" && task.AssignedTo != userId.Value)
-                {
-                    return Forbid();
-                }
-
                 var updates = await _context.TaskProgressUpdates
                     .Include(tpu => tpu.User)
                     .Where(tpu => tpu.TaskId == taskId)
@@ -1092,14 +1078,6 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
-                // Role-based access control
-                // Admin and Manager can view any task's attachments
-                // Employee can only view attachments for tasks assigned to them
-                if (userRole == "Employee" && task.AssignedTo != userId.Value)
-                {
-                    return Forbid();
-                }
-
                 var attachments = await _context.TaskAttachments
                     .Include(ta => ta.UploadedByUser)
                     .Where(ta => ta.TaskId == taskId)
@@ -1194,14 +1172,6 @@ namespace TaskManagementAPI.Controllers
                 if (task == null)
                 {
                     return NotFound(new { message = "Task not found" });
-                }
-
-                // Role-based access control
-                // Admin and Manager can view any task's comments
-                // Employee can only view comments for tasks assigned to them
-                if (userRole == "Employee" && task.AssignedTo != userId.Value)
-                {
-                    return Forbid();
                 }
 
                 var comments = await _context.TaskComments
@@ -1485,14 +1455,25 @@ namespace TaskManagementAPI.Controllers
                     return BadRequest(new { message = "You are the task creator and can already edit this task" });
                 }
 
-                // Check if there's already a pending request
+                // Check if there's already any request (pending, approved, or rejected)
                 var existingRequest = await _context.TaskEditRequests
-                    .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value && ter.Status == "Pending")
+                    .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value)
                     .FirstOrDefaultAsync();
 
                 if (existingRequest != null)
                 {
-                    return BadRequest(new { message = "You already have a pending edit request for this task" });
+                    if (existingRequest.Status == "Pending")
+                    {
+                        return BadRequest(new { message = "You already have a pending edit request for this task" });
+                    }
+                    else if (existingRequest.Status == "Approved")
+                    {
+                        return BadRequest(new { message = "You already have approved edit access for this task" });
+                    }
+                    else if (existingRequest.Status == "Rejected")
+                    {
+                        return BadRequest(new { message = "Your previous edit request was rejected. Please contact the task creator." });
+                    }
                 }
 
                 var editRequest = new TaskEditRequest
@@ -1535,10 +1516,32 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
-                // Only task creator can view edit requests
+                // Only task creator can view ALL edit requests
                 if (task.AssignedBy != userId.Value)
                 {
-                    return Forbid();
+                    // Non-creators can only see their own request
+                    var myRequest = await _context.TaskEditRequests
+                        .Include(ter => ter.Task)
+                        .Include(ter => ter.RequestedByUser)
+                        .Include(ter => ter.ReviewedByUser)
+                        .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value)
+                        .Select(ter => new TaskEditRequestDto
+                        {
+                            Id = ter.Id,
+                            TaskId = ter.TaskId,
+                            TaskTitle = ter.Task!.Title,
+                            RequestedByUserId = ter.RequestedByUserId,
+                            RequestedByUserName = ter.RequestedByUser!.Name,
+                            RequestMessage = ter.RequestMessage,
+                            Status = ter.Status,
+                            CreatedAt = ter.CreatedAt,
+                            ReviewedByUserId = ter.ReviewedByUserId,
+                            ReviewedByUserName = ter.ReviewedByUser != null ? ter.ReviewedByUser.Name : null,
+                            ReviewedAt = ter.ReviewedAt
+                        })
+                        .ToListAsync();
+
+                    return Ok(myRequest);
                 }
 
                 var requests = await _context.TaskEditRequests

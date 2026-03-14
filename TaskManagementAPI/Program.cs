@@ -108,6 +108,8 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromMinutes(30); // Session expires after 30 minutes of inactivity
     options.Cookie.HttpOnly = true;                 // Prevents JavaScript access to cookie (XSS protection)
     options.Cookie.IsEssential = true;              // Cookie is essential for application functionality
+    options.Cookie.SameSite = SameSiteMode.None;    // Required for cross-origin requests (Angular on :4200 → API on :5150)
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; // Allow both HTTP and HTTPS in dev
 });
 
 // ============================================================================

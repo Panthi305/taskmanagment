@@ -143,15 +143,32 @@ export class AuthService {
      * This enables persistent login across page refreshes.
      */
     checkSession(): void {
-        this.http.get<User>(`${this.apiUrl}/session`, { withCredentials: true })
+        type SessionResponse =
+            | { authenticated: false }
+            | { authenticated: true; id: number; name: string; email?: string; role: string };
+
+        this.http.get<SessionResponse>(`${this.apiUrl}/session`, { withCredentials: true })
             .subscribe({
-                next: (user) => {
+                next: (response) => {
+                    if (!response || response.authenticated === false) {
+                        return;
+                    }
+
+                    const user: User = {
+                        id: response.id,
+                        name: response.name,
+                        email: response.email ?? '',
+                        role: response.role
+                    };
+
+                    // Session valid ??? update both state and localStorage
                     this.currentUserSubject.next(user);
-                    this.saveUserToStorage(user);  // Update localStorage with fresh data
+                    this.saveUserToStorage(user);
                 },
                 error: () => {
-                    this.currentUserSubject.next(null);
-                    this.clearUserFromStorage();  // Clear invalid session
+                    // Session expired or server restarted ??? keep localStorage intact.
+                    // The user is still "logged in" via stored data.
+                    // They will only be truly logged out when they click Logout.
                 }
             });
     }
