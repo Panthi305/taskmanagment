@@ -5,8 +5,6 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TaskService } from '../../services/task.service';
 import { AuthService } from '../../services/auth.service';
 import { Task, TaskComment, TaskProgressUpdate, TaskAttachment } from '../../models/task';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
 
 @Component({
     selector: 'app-task-details',
@@ -77,41 +75,24 @@ export class TaskDetailsComponent implements OnInit {
         this.loading = true;
         this.error = '';
 
-        // Fetch task first, then fetch edit request status in parallel with other data
+        // Fetch the task first so the UI can render quickly.
         this.taskService.getTaskById(taskId).subscribe({
             next: (task) => {
                 this.task = task;
+                this.loading = false;
 
                 const isCreator = task.assignedBy === this.currentUserId;
 
-                // Build parallel requests — always fetch edit requests for non-creators
-                const editRequests$ = isCreator
-                    ? this.taskService.getEditRequests(taskId).pipe(catchError(() => of([])))
-                    : this.taskService.getEditRequests(taskId).pipe(catchError(() => of([])));
+                // Load the rest in parallel without blocking the main view.
+                this.loadComments(taskId);
+                this.loadProgressUpdates(taskId);
+                this.loadAttachments(taskId);
 
-                forkJoin({
-                    comments: this.taskService.getComments(taskId).pipe(catchError(() => of([]))),
-                    progress: this.taskService.getProgressUpdates(taskId).pipe(catchError(() => of([]))),
-                    attachments: this.taskService.getAttachments(taskId).pipe(catchError(() => of([]))),
-                    editRequests: editRequests$
-                }).subscribe(results => {
-                    this.comments = results.comments;
-                    this.progressUpdates = results.progress;
-                    this.attachments = results.attachments;
-
-                    if (isCreator) {
-                        // Creator sees all requests in the section
-                        this.editRequests = results.editRequests;
-                    } else {
-                        // Non-creator: set their own request status flags
-                        const myRequest = results.editRequests[0] ?? null;
-                        this.hasApprovedEditRequest = myRequest?.status === 'Approved';
-                        this.hasPendingEditRequest = myRequest?.status === 'Pending';
-                        this.hasRejectedEditRequest = myRequest?.status === 'Rejected';
-                    }
-
-                    this.loading = false;
-                });
+                if (isCreator) {
+                    this.loadEditRequests(taskId);
+                } else {
+                    this.checkEditRequestStatus(taskId);
+                }
             },
             error: () => {
                 this.error = 'Task details could not be loaded. The task may not exist or you may not have permission to view it.';

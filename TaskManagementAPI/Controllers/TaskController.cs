@@ -1455,6 +1455,12 @@ namespace TaskManagementAPI.Controllers
                     return BadRequest(new { message = "You are the task creator and can already edit this task" });
                 }
 
+                // Only the assigned user can request edit access
+                if (task.AssignedTo != userId.Value)
+                {
+                    return StatusCode(403, new { message = "Only the user assigned to this task can request edit access" });
+                }
+
                 // Check if there's already any request (pending, approved, or rejected)
                 var existingRequest = await _context.TaskEditRequests
                     .Where(ter => ter.TaskId == taskId && ter.RequestedByUserId == userId.Value)

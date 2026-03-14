@@ -6,6 +6,13 @@ namespace TaskManagementAPI.Data
     {
         public static void SeedData(ApplicationDbContext context)
         {
+            // One-time cleanup: remove all edit requests (stale data from old logic)
+            if (context.TaskEditRequests.Any())
+            {
+                context.TaskEditRequests.RemoveRange(context.TaskEditRequests);
+                context.SaveChanges();
+            }
+
             if (!context.Users.Any())
             {
                 var users = new List<User>

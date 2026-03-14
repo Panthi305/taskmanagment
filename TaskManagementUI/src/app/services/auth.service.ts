@@ -62,8 +62,7 @@ import { User, LoginRequest } from '../models/user';
     providedIn: 'root'  // Singleton service available app-wide
 })
 export class AuthService {
-    // API base URL - points to ASP.NET Core backend
-    private apiUrl = 'http://localhost:5150/api/auth';
+    private apiUrl = '/api/auth';
 
     // BehaviorSubject holds current user state
     // null = not logged in, User object = logged in
