@@ -16,7 +16,7 @@
             </svg>
             {{ error }}
         </div>
-        <a routerLink="/tasks" class="btn btn-secondary" style="margin-top:16px;">
+        <a [routerLink]="backToTasksRoute" class="btn btn-secondary" style="margin-top:16px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 aria-hidden="true">
                 <line x1="19" y1="12" x2="5" y2="12" />
@@ -35,7 +35,7 @@
         <nav class="breadcrumb" aria-label="Breadcrumb">
             <a routerLink="/dashboard" class="breadcrumb-link">Dashboard</a>
             <span class="breadcrumb-sep" aria-hidden="true">›</span>
-            <a routerLink="/tasks" class="breadcrumb-link">Tasks</a>
+            <a [routerLink]="backToTasksRoute" class="breadcrumb-link">Tasks</a>
             <span class="breadcrumb-sep" aria-hidden="true">›</span>
             <span class="breadcrumb-current" aria-current="page">Task Details</span>
         </nav>
@@ -51,14 +51,14 @@
                 <h1 class="page-title">{{ task.title }}</h1>
             </div>
             <div class="page-actions">
-                <a routerLink="/tasks" class="btn btn-secondary">
+                <button type="button" (click)="goBackToTasks()" class="btn btn-secondary">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         aria-hidden="true">
                         <line x1="19" y1="12" x2="5" y2="12" />
                         <polyline points="12 19 5 12 12 5" />
                     </svg>
                     Back to Tasks
-                </a>
+                </button>
             </div>
         </div>
 

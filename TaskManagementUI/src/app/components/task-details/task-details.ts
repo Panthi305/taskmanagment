@@ -38,6 +38,7 @@ export class TaskDetailsComponent implements OnInit {
 
     currentUserId: number = 0;
     currentUserRole: string = '';
+    backToTasksRoute: string = '/tasks';
 
     loading: boolean = true;
     error: string = '';
@@ -55,6 +56,7 @@ export class TaskDetailsComponent implements OnInit {
         if (user) {
             this.currentUserId = user.id;
             this.currentUserRole = user.role;
+            this.backToTasksRoute = this.currentUserRole.toLowerCase() === 'employee' ? '/my-tasks' : '/tasks';
         }
 
         this.route.paramMap.subscribe(params => {
@@ -310,6 +312,10 @@ export class TaskDetailsComponent implements OnInit {
 
     goBack(): void {
         this.location.back();
+    }
+
+    goBackToTasks(): void {
+        this.router.navigateByUrl(this.backToTasksRoute);
     }
 
     // ========================================================================
