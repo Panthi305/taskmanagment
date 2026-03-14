@@ -42,6 +42,7 @@ export interface TaskProgressUpdate {
     userName: string;
     description: string;
     filePath?: string;
+    fileUrl?: string;
     createdAt: Date;
 }
 

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using TaskManagementAPI.Data;
 using TaskManagementAPI.DTOs;
@@ -49,6 +50,26 @@ namespace TaskManagementAPI.Controllers
         public TaskController(ApplicationDbContext context)
         {
             _context = context;
+        }
+
+        private static bool CanViewTask(TaskItem task, int userId, string? userRole)
+        {
+            if (string.Equals(userRole, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return task.AssignedBy == userId || task.AssignedTo == userId;
+        }
+
+        private static string? BuildProgressFileUrl(int taskId, int progressId, string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                return null;
+            }
+
+            return $"/api/task/{taskId}/progress/{progressId}/file";
         }
 
         /*
@@ -918,6 +939,7 @@ namespace TaskManagementAPI.Controllers
                     UserName = user!.Name,
                     Description = progressUpdate.Description,
                     FilePath = progressUpdate.FilePath,
+                    FileUrl = BuildProgressFileUrl(progressUpdate.TaskId, progressUpdate.Id, progressUpdate.FilePath),
                     CreatedAt = progressUpdate.CreatedAt
                 };
 
@@ -951,6 +973,11 @@ namespace TaskManagementAPI.Controllers
                     return NotFound(new { message = "Task not found" });
                 }
 
+                if (!CanViewTask(task, userId.Value, userRole))
+                {
+                    return Forbid();
+                }
+
                 var updates = await _context.TaskProgressUpdates
                     .Include(tpu => tpu.User)
                     .Where(tpu => tpu.TaskId == taskId)
@@ -963,6 +990,7 @@ namespace TaskManagementAPI.Controllers
                         UserName = tpu.User!.Name,
                         Description = tpu.Description,
                         FilePath = tpu.FilePath,
+                        FileUrl = BuildProgressFileUrl(tpu.TaskId, tpu.Id, tpu.FilePath),
                         CreatedAt = tpu.CreatedAt
                     })
                     .ToListAsync();
@@ -972,6 +1000,72 @@ namespace TaskManagementAPI.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "An error occurred while retrieving progress updates", error = ex.Message });
+            }
+        }
+
+        // ========================================================================
+        // GET /api/task/{taskId}/progress/{progressId}/file - DOWNLOAD/VIEW FILE
+        // ========================================================================
+        [HttpGet("{taskId}/progress/{progressId}/file")]
+        public async Task<IActionResult> GetProgressUpdateFile(int taskId, int progressId)
+        {
+            try
+            {
+                var userId = HttpContext.Session.GetInt32("UserId");
+                var userRole = HttpContext.Session.GetString("UserRole");
+
+                if (userId == null)
+                {
+                    return Unauthorized();
+                }
+
+                var task = await _context.Tasks.FindAsync(taskId);
+                if (task == null)
+                {
+                    return NotFound(new { message = "Task not found" });
+                }
+
+                if (!CanViewTask(task, userId.Value, userRole))
+                {
+                    return Forbid();
+                }
+
+                var progressUpdate = await _context.TaskProgressUpdates
+                    .Where(tpu => tpu.Id == progressId && tpu.TaskId == taskId)
+                    .FirstOrDefaultAsync();
+
+                if (progressUpdate == null || string.IsNullOrWhiteSpace(progressUpdate.FilePath))
+                {
+                    return NotFound(new { message = "File not found" });
+                }
+
+                var relativePath = progressUpdate.FilePath.TrimStart('/');
+                var fullPath = Path.GetFullPath(
+                    Path.Combine(Directory.GetCurrentDirectory(), relativePath.Replace('/', Path.DirectorySeparatorChar))
+                );
+                var uploadsRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "uploads"));
+
+                if (!fullPath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Forbid();
+                }
+
+                if (!System.IO.File.Exists(fullPath))
+                {
+                    return NotFound(new { message = "File not found" });
+                }
+
+                var contentTypeProvider = new FileExtensionContentTypeProvider();
+                if (!contentTypeProvider.TryGetContentType(fullPath, out var contentType))
+                {
+                    contentType = "application/octet-stream";
+                }
+
+                return PhysicalFile(fullPath, contentType, enableRangeProcessing: true);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving the file", error = ex.Message });
             }
         }
 

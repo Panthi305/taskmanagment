@@ -139,7 +139,8 @@
                         <small>{{ update.createdAt | date:'short' }}</small>
                     </div>
                     <p>{{ update.description }}</p>
-                    <a *ngIf="update.filePath" [href]="update.filePath" target="_blank">View File</a>
+                    <a *ngIf="update.fileUrl || update.filePath" [href]="update.fileUrl || update.filePath"
+                        target="_blank" rel="noopener">View File</a>
                 </div>
                 <p *ngIf="progressUpdates.length === 0">No progress updates yet</p>
             </div>

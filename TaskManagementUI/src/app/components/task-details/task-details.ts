@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+﻿import { Component, OnInit } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -324,6 +324,10 @@ export class TaskDetailsComponent implements OnInit {
             return false;
         }
 
+        // Only the assigned user can request edit access
+        if (this.task.assignedTo !== this.currentUserId) {
+            return false;
+        }
         // Cannot request if task is completed
         if (this.task.status === 'Completed') {
             return false;
@@ -355,11 +359,15 @@ export class TaskDetailsComponent implements OnInit {
     }
 
     checkEditRequestStatus(taskId: number): void {
-        // Skip if user is the task creator — they can always edit
+        // Skip if user is the task creator â€” they can always edit
         if (!this.task || this.task.assignedBy === this.currentUserId) {
             return;
         }
 
+        // Only assigned user should check their edit request status
+        if (this.task.assignedTo !== this.currentUserId) {
+            return;
+        }
         // Reset flags before checking
         this.hasApprovedEditRequest = false;
         this.hasPendingEditRequest = false;
@@ -376,7 +384,7 @@ export class TaskDetailsComponent implements OnInit {
                 }
             },
             error: () => {
-                // Silently fail — user simply has no edit access
+                // Silently fail â€” user simply has no edit access
             }
         });
     }
@@ -405,6 +413,10 @@ export class TaskDetailsComponent implements OnInit {
     submitEditRequest(): void {
         if (!this.task) return;
 
+        if (this.task.assignedTo !== this.currentUserId) {
+            alert('Only the user assigned to this task can request edit access.');
+            return;
+        }
         this.taskService.createEditRequest(this.task.id, this.editRequestMessage).subscribe({
             next: () => {
                 this.closeEditRequestDialog();
@@ -443,3 +455,7 @@ export class TaskDetailsComponent implements OnInit {
         });
     }
 }
+
+
+
+
