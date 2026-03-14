@@ -1,59 +1,131 @@
-<div class="page-container">
-    <div class="page-header">
-        <h2>My Tasks</h2>
-        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
+<header class="navbar">
+    <div class="navbar-inner">
+        <div class="nav-brand">
+            <div class="brand-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+            </div>
+            <span class="brand-name">TaskFlow</span>
+        </div>
+        <nav class="nav-links" aria-label="Main navigation">
+            <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
+            <a routerLink="/tasks" routerLinkActive="active" class="nav-link">All Tasks</a>
+            <a routerLink="/my-tasks" routerLinkActive="active" class="nav-link">My Tasks</a>
+        </nav>
     </div>
+</header>
 
-    <div class="filter-section">
-        <label>Filter by Status:</label>
-        <select [(ngModel)]="filterStatus" (change)="applyFilter()">
-            <option value="All">All</option>
-            <option value="Pending">Pending</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-        </select>
-    </div>
+<main class="page-content">
+    <div class="container">
 
-    <div class="tasks-container">
-        <div *ngIf="filteredTasks.length === 0" class="no-data">
-            No tasks found
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a routerLink="/dashboard" class="breadcrumb-link">Dashboard</a>
+            <span class="breadcrumb-sep" aria-hidden="true">›</span>
+            <span class="breadcrumb-current" aria-current="page">My Tasks</span>
+        </nav>
+
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">My Tasks</h1>
+                <p class="page-subtitle">Tasks assigned to you</p>
+            </div>
+            <div class="page-actions">
+                <div class="filter-group">
+                    <label class="filter-label" for="my-status-filter">Status</label>
+                    <select class="filter-select" id="my-status-filter" [(ngModel)]="filterStatus"
+                        (change)="applyFilter()" aria-label="Filter by status">
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
-        <div *ngFor="let task of filteredTasks" class="task-card">
-            <div class="task-header">
-                <h3>{{ task.title }}</h3>
-                <span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">
-                    {{ task.status }}
-                </span>
-            </div>
-            <p class="task-description">{{ task.description }}</p>
-            <div class="task-meta">
-                <div class="meta-item">
-                    <strong>Priority:</strong>
-                    <span class="badge priority-{{ task.priority.toLowerCase() }}">{{ task.priority }}</span>
+        <!-- Empty State -->
+        <div class="card" *ngIf="filteredTasks.length === 0">
+            <div class="card-body">
+                <div class="empty-state">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                        aria-hidden="true">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+                        <rect x="9" y="3" width="6" height="4" rx="1" />
+                    </svg>
+                    <p>No tasks found for the selected filter.</p>
                 </div>
-                <div class="meta-item">
-                    <strong>Assigned By:</strong> {{ task.assignedByName }}
-                </div>
-                <div class="meta-item">
-                    <strong>Created:</strong> {{ task.createdAt | date:'short' }}
-                </div>
-                <div class="meta-item" *ngIf="task.startDate">
-                    <strong>Started:</strong> {{ task.startDate | date:'short' }}
-                </div>
-                <div class="meta-item" *ngIf="task.completedDate">
-                    <strong>Completed:</strong> {{ task.completedDate | date:'short' }}
-                </div>
-            </div>
-            <div class="task-actions">
-                <button [routerLink]="['/tasks', task.id]" class="btn-view">View Details</button>
-                <button *ngIf="canStart(task)" (click)="startTask(task.id)" class="btn-start">
-                    Start Task
-                </button>
-                <button *ngIf="canComplete(task)" (click)="completeTask(task.id)" class="btn-complete">
-                    Complete Task
-                </button>
             </div>
         </div>
+
+        <!-- Task Cards -->
+        <div class="tasks-grid" *ngIf="filteredTasks.length > 0">
+            <div *ngFor="let task of filteredTasks" class="task-card card">
+                <div class="card-body">
+                    <div class="task-card-header">
+                        <div class="task-badges">
+                            <span class="badge" [ngClass]="'badge-' + task.priority.toLowerCase()">{{ task.priority
+                                }}</span>
+                            <span class="badge" [ngClass]="'badge-' + task.status.toLowerCase().replace(' ', '-')">{{
+                                task.status }}</span>
+                        </div>
+                    </div>
+
+                    <h3 class="task-card-title">{{ task.title }}</h3>
+                    <p class="task-card-desc">{{ task.description }}</p>
+
+                    <div class="task-meta">
+                        <div class="meta-item">
+                            <span class="meta-label">Assigned By</span>
+                            <span class="meta-value">{{ task.assignedByName }}</span>
+                        </div>
+                        <div class="meta-item">
+                            <span class="meta-label">Created</span>
+                            <span class="meta-value">{{ task.createdAt | date:'MMM d, y' }}</span>
+                        </div>
+                        <div class="meta-item" *ngIf="task.startDate">
+                            <span class="meta-label">Started</span>
+                            <span class="meta-value">{{ task.startDate | date:'MMM d, y' }}</span>
+                        </div>
+                        <div class="meta-item" *ngIf="task.completedDate">
+                            <span class="meta-label">Completed</span>
+                            <span class="meta-value">{{ task.completedDate | date:'MMM d, y' }}</span>
+                        </div>
+                    </div>
+
+                    <div class="task-card-actions">
+                        <a [routerLink]="['/tasks', task.id]" class="btn btn-secondary btn-sm">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" aria-hidden="true">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View Details
+                        </a>
+                        <button *ngIf="canStart(task)" (click)="startTask(task.id)" class="btn btn-primary btn-sm">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" aria-hidden="true">
+                                <polygon points="5 3 19 12 5 21 5 3" />
+                            </svg>
+                            Start Task
+                        </button>
+                        <button *ngIf="canComplete(task)" (click)="completeTask(task.id)"
+                            class="btn btn-success btn-sm">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" aria-hidden="true">
+                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                                <polyline points="22 4 12 14.01 9 11.01" />
+                            </svg>
+                            Complete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
-</div>
+</main>

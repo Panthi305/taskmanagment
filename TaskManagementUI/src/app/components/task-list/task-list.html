@@ -1,51 +1,106 @@
-<div class="page-container">
-    <div class="page-header">
-        <h2>All Tasks</h2>
-        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
+<header class="navbar">
+    <div class="navbar-inner">
+        <div class="nav-brand">
+            <div class="brand-icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4" />
+                    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+            </div>
+            <span class="brand-name">TaskFlow</span>
+        </div>
+        <nav class="nav-links" aria-label="Main navigation">
+            <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
+            <a routerLink="/tasks" routerLinkActive="active" class="nav-link">All Tasks</a>
+        </nav>
     </div>
+</header>
 
-    <div class="filter-section">
-        <label>Filter by Status:</label>
-        <select [(ngModel)]="filterStatus" (change)="applyFilter()">
-            <option value="All">All</option>
-            <option value="Pending">Pending</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-        </select>
-    </div>
+<main class="page-content">
+    <div class="container">
 
-    <div class="table-container">
-        <table *ngIf="filteredTasks.length > 0">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Description</th>
-                    <th>Assigned By</th>
-                    <th>Assigned To</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr *ngFor="let task of filteredTasks">
-                    <td>{{ task.id }}</td>
-                    <td>{{ task.title }}</td>
-                    <td>{{ task.description }}</td>
-                    <td>{{ task.assignedByName }}</td>
-                    <td>{{ task.assignedToName }}</td>
-                    <td><span class="badge priority-{{ task.priority.toLowerCase() }}">{{ task.priority }}</span></td>
-                    <td><span class="badge status-{{ task.status.toLowerCase().replace(' ', '-') }}">{{ task.status
-                            }}</span></td>
-                    <td>{{ task.createdAt | date:'short' }}</td>
-                    <td>
-                        <button [routerLink]="['/tasks', task.id]" class="btn-view">View</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-        <p *ngIf="filteredTasks.length === 0" class="no-data">No tasks found</p>
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a routerLink="/dashboard" class="breadcrumb-link">Dashboard</a>
+            <span class="breadcrumb-sep" aria-hidden="true">›</span>
+            <span class="breadcrumb-current" aria-current="page">All Tasks</span>
+        </nav>
+
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">All Tasks</h1>
+                <p class="page-subtitle">Browse and manage all tasks in the system</p>
+            </div>
+            <div class="page-actions">
+                <div class="filter-group">
+                    <label class="filter-label" for="status-filter">Status</label>
+                    <select class="filter-select" id="status-filter" [(ngModel)]="filterStatus" (change)="applyFilter()"
+                        aria-label="Filter by status">
+                        <option value="All">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tasks Table Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Tasks</h2>
+                <span class="item-count">{{ filteredTasks.length }}</span>
+            </div>
+            <div class="card-body" style="padding-top:0;">
+                <div class="table-wrapper" *ngIf="filteredTasks.length > 0">
+                    <table class="data-table" aria-label="All tasks">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Title</th>
+                                <th scope="col">Assigned By</th>
+                                <th scope="col">Assigned To</th>
+                                <th scope="col">Priority</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Created</th>
+                                <th scope="col">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr *ngFor="let task of filteredTasks" class="table-row">
+                                <td class="text-muted text-sm">{{ task.id }}</td>
+                                <td class="task-title-cell">{{ task.title }}</td>
+                                <td class="text-muted">{{ task.assignedByName }}</td>
+                                <td class="text-muted">{{ task.assignedToName }}</td>
+                                <td>
+                                    <span class="badge" [ngClass]="'badge-' + task.priority.toLowerCase()">{{
+                                        task.priority }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge"
+                                        [ngClass]="'badge-' + task.status.toLowerCase().replace(' ', '-')">{{
+                                        task.status }}</span>
+                                </td>
+                                <td class="text-muted text-sm">{{ task.createdAt | date:'MMM d, y' }}</td>
+                                <td>
+                                    <a [routerLink]="['/tasks', task.id]" class="btn btn-secondary btn-sm">View</a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="empty-state" *ngIf="filteredTasks.length === 0">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                        aria-hidden="true">
+                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+                        <rect x="9" y="3" width="6" height="4" rx="1" />
+                    </svg>
+                    <p>No tasks match the selected filter.</p>
+                </div>
+            </div>
+        </div>
+
     </div>
-</div>
+</main>

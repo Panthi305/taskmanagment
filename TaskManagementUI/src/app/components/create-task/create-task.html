@@ -1,56 +1,122 @@
-<div class="page-container">
-    <div class="page-header">
-        <h2>Create New Task</h2>
-        <button routerLink="/dashboard" class="btn-back">Back to Dashboard</button>
-    </div>
+<div class="create-page">
+    <div class="container">
 
-    <div class="form-container">
-        <form (ngSubmit)="onSubmit()">
-            <div class="form-group">
-                <label for="title">Task Title *</label>
-                <input type="text" id="title" [(ngModel)]="title" name="title" required
-                    placeholder="Enter task title" />
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a routerLink="/dashboard" class="breadcrumb-link">Dashboard</a>
+            <span class="breadcrumb-sep" aria-hidden="true">›</span>
+            <span class="breadcrumb-current">Create Task</span>
+        </nav>
+
+        <!-- Page Header -->
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Create New Task</h1>
+                <p class="page-subtitle">Fill in the details below to assign a new task</p>
             </div>
+            <a routerLink="/dashboard" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    aria-hidden="true">
+                    <line x1="19" y1="12" x2="5" y2="12" />
+                    <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Back to Dashboard
+            </a>
+        </div>
 
-            <div class="form-group">
-                <label for="description">Description *</label>
-                <textarea id="description" [(ngModel)]="description" name="description" required rows="5"
-                    placeholder="Enter task description"></textarea>
+        <!-- Form Card -->
+        <div class="card form-card">
+            <div class="card-body">
+                <form (ngSubmit)="onSubmit()" novalidate>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="title">
+                                Task Title <span class="required" aria-hidden="true">*</span>
+                            </label>
+                            <input class="form-control" type="text" id="title" [(ngModel)]="title" name="title" required
+                                placeholder="e.g. Design new landing page" aria-required="true" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="description">
+                                Description <span class="required" aria-hidden="true">*</span>
+                            </label>
+                            <textarea class="form-control" id="description" [(ngModel)]="description" name="description"
+                                required rows="5" placeholder="Describe the task in detail..."
+                                aria-required="true"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-row two-col">
+                        <div class="form-group">
+                            <label class="form-label" for="assignedTo">
+                                Assign To <span class="required" aria-hidden="true">*</span>
+                            </label>
+                            <select class="form-control" id="assignedTo" [(ngModel)]="assignedTo" name="assignedTo"
+                                required aria-required="true">
+                                <option value="0" disabled>Select a team member</option>
+                                <option *ngFor="let user of users" [value]="user.id">
+                                    {{ user.name }} — {{ user.role }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="priority">Priority</label>
+                            <select class="form-control" id="priority" [(ngModel)]="priority" name="priority">
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="deadline">Deadline <span
+                                    class="optional">(optional)</span></label>
+                            <input class="form-control" type="datetime-local" id="deadline" [(ngModel)]="deadline"
+                                name="deadline" />
+                        </div>
+                    </div>
+
+                    <div *ngIf="successMessage" class="alert alert-success" role="status" aria-live="polite">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" aria-hidden="true">
+                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14" />
+                            <polyline points="22 4 12 14.01 9 11.01" />
+                        </svg>
+                        {{ successMessage }}
+                    </div>
+
+                    <div *ngIf="errorMessage" class="alert alert-danger" role="alert" aria-live="polite">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        {{ errorMessage }}
+                    </div>
+
+                    <div class="form-footer">
+                        <a routerLink="/dashboard" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" aria-hidden="true">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Create Task
+                        </button>
+                    </div>
+
+                </form>
             </div>
+        </div>
 
-            <div class="form-group">
-                <label for="assignedTo">Assign To *</label>
-                <select id="assignedTo" [(ngModel)]="assignedTo" name="assignedTo" required>
-                    <option value="0">Select User</option>
-                    <option *ngFor="let user of users" [value]="user.id">
-                        {{ user.name }} ({{ user.role }})
-                    </option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="priority">Priority</label>
-                <select id="priority" [(ngModel)]="priority" name="priority">
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="deadline">Deadline (Optional)</label>
-                <input type="datetime-local" id="deadline" [(ngModel)]="deadline" name="deadline" />
-            </div>
-
-            <div *ngIf="successMessage" class="success-message">
-                {{ successMessage }}
-            </div>
-
-            <div *ngIf="errorMessage" class="error-message">
-                {{ errorMessage }}
-            </div>
-
-            <button type="submit" class="btn-primary">Create Task</button>
-        </form>
     </div>
 </div>
